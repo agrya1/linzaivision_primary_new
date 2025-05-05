@@ -1,0 +1,54 @@
+name: linzaivision_primary
+description: "A new Flutter project."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.3 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  image_picker: ^1.1.2
+  provider: ^6.1.1
+  screenshot: ^3.0.0
+  path_provider: ^2.1.2
+  intl: ^0.20.2
+  flutter_zoom_drawer: ^3.1.1
+  sqflite: ^2.3.0
+  path: ^1.8.3
+  sqflite_common_ffi: ^2.3.2+1
+  flutter_slidable: ^4.0.0
+  image_gallery_saver: ^2.0.3
+  # 阿里云一键登录SDK - 使用flutter_ali_auth替代旧版ali_auth
+  flutter_ali_auth:
+    path: ./plugins/flutter_ali_auth
+  # 持久化存储用户登录信息
+  shared_preferences: ^2.2.2
+  # 用于打开外部链接
+  url_launcher: ^6.2.4
+  
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  mockito: ^5.4.4
+  build_runner: ^2.4.8
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/
+    - assets/default.jpg
+    - assets/images/
+    - assets/images/default/
+    - assets/icons/
+    - assets/icons/chenggong.png
+    - assets/icons/feiqi.png
+    - assets/images/app_logo.png
+    
+  fonts:
+    - family: Abhaya Libre ExtraBold
+      fonts:
+        - asset: assets/fonts/AbhayaLibre-ExtraBold.ttf
+          weight: 800

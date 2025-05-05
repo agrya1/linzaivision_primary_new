@@ -1,0 +1,16 @@
+修复计划:
+
+1. 阿里云的预取号功能中，Android端的getPhoneInfo方法需要修改 - 已解决
+2. AliAuthClient类中存在一个非静态的getMaskedPhone方法，需要删除 - 问题
+3. AuthService类中的getMaskedPhone方法需要改为使用AliAuthClient.getPhoneInfo方法 - 已尝试但问题依然存在
+
+确认从日志中看到phone字段为null的原因可能如下:
+
+1. Flutter和Java代码中的字段名不匹配
+2. getPhoneInfo方法返回的Map中可能没有'phone'字段
+3. AuthService中的getMaskedPhone方法没有被正确编译更新
+
+解决方案:
+1. 打印更详细的日志，确认AliAuthClient.getPhoneInfo返回的具体字段内容
+2. 确认Android端的FlutterAliAuthPlugin.java中使用的字段名是否与Flutter代码匹配
+3. 如果都无法解决，可以尝试重新创建项目结构或者手动编辑Java文件 

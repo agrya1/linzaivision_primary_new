@@ -1,0 +1,31 @@
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        // 阿里云Maven仓库
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        // 添加阿里云一键登录SDK可能需要的仓库地址
+        maven { url "https://jitpack.io" }
+    }
+}
+
+rootProject.buildDir = "../build"
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+}
+subprojects {
+    project.evaluationDependsOn(":app")
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}
+
+// 添加全局配置，确保与阿里云SDK兼容
+ext {
+    // 指定SDK编译版本，确保与app/build.gradle一致
+    compileSdkVersion = 33
+    minSdkVersion = 21
+    targetSdkVersion = 33
+}
