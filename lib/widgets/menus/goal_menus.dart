@@ -27,7 +27,7 @@ class GoalOperationMenu extends StatelessWidget {
       position: PopupMenuPosition.under,
       icon: Icon(
         Icons.more_vert,
-        color: Theme.of(context).appBarTheme.iconTheme?.color ?? Colors.black,
+        color: Colors.white,
       ),
       itemBuilder: (context) => [
         // 全屏视图下的选项

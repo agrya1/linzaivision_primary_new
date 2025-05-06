@@ -189,19 +189,37 @@ class _TimelineViewState extends State<TimelineView> {
                 height: 42,
                 color: Colors.black,
               ),
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(width: 1),
-                  color: Colors.white,
-                ),
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  // 白色背景形成圆点周围8px的间距
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  // 中间的黑色小圆点
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                      border: Border.all(
+                        color: Colors.black,
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                ],
               ),
               // 使用SizedBox而非Container设置高度能更好地适应可变高度
               SizedBox(
                 width: 1,
-                height: 150, // 使用固定值，但足够容纳大多数卡片
+                height: 132, // 使用固定值，但足够容纳大多数卡片
                 child: Container(color: Colors.black),
               ),
             ],
@@ -210,13 +228,13 @@ class _TimelineViewState extends State<TimelineView> {
         // 右侧卡片
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.only(right: 16, bottom: 16),
-                child: GoalCard(
-                  goal: goal,
+            padding: const EdgeInsets.only(left: 12, right: 24, bottom: 12),
+            child: GoalCard(
+              goal: goal,
               onTap: () => widget.onGoalSelect(goal),
               onStatusChange: widget.onStatusChange != null
                   ? (value) => widget.onStatusChange!(goal, value)
-                      : null,
+                  : null,
             ),
           ),
         ),
@@ -281,14 +299,32 @@ class _TimelineViewState extends State<TimelineView> {
                 height: 8, // 减少高度使顶部对齐卡片
                 color: Colors.black,
               ),
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(width: 1),
-                  color: Colors.white,
-                ),
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  // 白色背景形成圆点周围8px的间距
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  // 中间的黑色小圆点
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                      border: Border.all(
+                        color: Colors.black,
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                ],
               ),
               // 下方连接线 - 使用占位而非固定高度
               Container(
@@ -306,7 +342,7 @@ class _TimelineViewState extends State<TimelineView> {
         // 右侧添加卡片，使用GlobalKey来测量高度
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.only(right: 16, bottom: 16),
+            padding: const EdgeInsets.only(left: 12, right: 24, bottom: 24),
             child: Container(
               key: cardKey,
               child: _buildAddCard(),
@@ -955,12 +991,12 @@ class _AddCardWidgetState extends State<_AddCardWidget> {
         widget.descriptionController.text.isNotEmpty;
 
     return Stack(
-              children: [
-                Container(
+      children: [
+        Container(
           // 移除固定高度，使卡片自适应内容
           margin: const EdgeInsets.only(top: 8),
-          padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(20),
             // 如果选择了背景图片，显示背景
@@ -1309,7 +1345,7 @@ class _AddCardWidgetState extends State<_AddCardWidget> {
                                   child: const Center(
                                     child: Icon(
                                       Icons.image_not_supported,
-                    color: Colors.grey,
+                                      color: Colors.grey,
                                     ),
                                   ),
                                 );
@@ -1342,8 +1378,8 @@ class _AddCardWidgetState extends State<_AddCardWidget> {
                   icon: const Icon(Icons.photo_library),
                   label: const Text(
                     '从相册选择',
-                  style: TextStyle(
-                    fontSize: 16,
+                    style: TextStyle(
+                      fontSize: 16,
                       fontWeight: FontWeight.w600,
                       fontFamily: 'STZhongsong',
                     ),

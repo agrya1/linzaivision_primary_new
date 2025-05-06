@@ -39,6 +39,7 @@ class FullScreenView extends StatefulWidget {
   State<FullScreenView> createState() => _FullScreenViewState();
 }
 
+// 全屏视图状态类
 class _FullScreenViewState extends State<FullScreenView>
     with SingleTickerProviderStateMixin {
   // 页面控制器
@@ -95,6 +96,7 @@ class _FullScreenViewState extends State<FullScreenView>
     });
   }
 
+  // 组件更新时处理
   @override
   void didUpdateWidget(FullScreenView oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -117,6 +119,7 @@ class _FullScreenViewState extends State<FullScreenView>
     }
   }
 
+  // 组件销毁时处理
   @override
   void dispose() {
     _pageController.dispose();
@@ -204,6 +207,7 @@ class _FullScreenViewState extends State<FullScreenView>
     }
   }
 
+  // 构建组件
   @override
   Widget build(BuildContext context) {
     if (widget.goals.isEmpty) {
@@ -213,6 +217,7 @@ class _FullScreenViewState extends State<FullScreenView>
     return _buildContent(context);
   }
 
+  // 构建空状态
   Widget _buildEmptyState(BuildContext context) {
     return Stack(
       children: [
@@ -254,6 +259,7 @@ class _FullScreenViewState extends State<FullScreenView>
     );
   }
 
+  // 构建内容
   Widget _buildContent(BuildContext context) {
     return Stack(
       children: [
@@ -312,6 +318,7 @@ class _FullScreenViewState extends State<FullScreenView>
     );
   }
 
+// 构建背景图片
   Widget _buildBackgroundImage(Goal goal) {
     return Positioned.fill(
       child: Builder(
@@ -351,6 +358,7 @@ class _FullScreenViewState extends State<FullScreenView>
     );
   }
 
+  // 构建叠加层
   Widget _buildOverlay() {
     return Positioned.fill(
       child: Container(
@@ -359,6 +367,7 @@ class _FullScreenViewState extends State<FullScreenView>
     );
   }
 
+  // 构建中心内容
   Widget _buildCenterContent(Goal goal) {
     // 当前目标变化时更新描述控制器内容
     if (goal.id == widget.currentGoal?.id) {
@@ -471,6 +480,7 @@ class _FullScreenViewState extends State<FullScreenView>
     );
   }
 
+  // 构建底部指示器
   Widget _buildBottomIndicators() {
     return Positioned(
       bottom: 40,

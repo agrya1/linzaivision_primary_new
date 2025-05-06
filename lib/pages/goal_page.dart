@@ -410,15 +410,21 @@ class GoalPageState extends State<GoalPage> {
       drawer: _buildDrawer(),
       body: Stack(
         children: [
-          // 背景圖片（無遮罩）
-          Container(
-            decoration: BoxDecoration(
-              image: DecorationImage(
-                image: AssetImage('assets/default.jpg'),
-                fit: BoxFit.cover,
+          // 背景圖片（只在全屏视图下显示）
+          if (currentView == 0)
+            Container(
+              decoration: BoxDecoration(
+                image: DecorationImage(
+                  image: AssetImage('assets/default.jpg'),
+                  fit: BoxFit.cover,
+                ),
               ),
             ),
-          ),
+          // 其他视图使用纯白色背景
+          if (currentView != 0)
+            Container(
+              color: Colors.white,
+            ),
           if (_isLoading)
             const Center(
               child: CircularProgressIndicator(),
