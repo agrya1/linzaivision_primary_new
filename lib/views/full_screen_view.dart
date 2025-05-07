@@ -218,7 +218,25 @@ class _FullScreenViewState extends State<FullScreenView>
       return _buildEmptyState(context);
     }
 
-    return _buildContent(context);
+    final isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
+    final isEditing = widget.isEditingTitle || _isEditingDescription;
+
+    return Stack(
+      children: [
+        Scaffold(
+          resizeToAvoidBottomInset: false,
+          backgroundColor: Colors.transparent,
+          body: _buildContent(context),
+        ),
+        if (!(isKeyboardOpen && isEditing))
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 40,
+            child: _buildBottomIndicatorsContentOnly(),
+          ),
+      ],
+    );
   }
 
   // 构建空状态
@@ -287,37 +305,6 @@ class _FullScreenViewState extends State<FullScreenView>
             );
           },
         ),
-
-        // 左右滑动触控区域（保留功能但移除视觉元素）
-        Positioned.fill(
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              // 左侧滑动区域（无视觉提示）
-              GestureDetector(
-                onTap: _previousGoal,
-                child: Container(
-                  width: 40,
-                  color: Colors.transparent,
-                ),
-              ),
-
-              Spacer(), // 使用Spacer填充中间区域
-
-              // 右侧滑动区域（无视觉提示）
-              GestureDetector(
-                onTap: _nextGoal,
-                child: Container(
-                  width: 40,
-                  color: Colors.transparent,
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        // 底部指示器
-        _buildBottomIndicators(),
       ],
     );
   }
@@ -460,59 +447,54 @@ class _FullScreenViewState extends State<FullScreenView>
   }
 
   // 构建底部指示器
-  Widget _buildBottomIndicators() {
-    return Positioned(
-      bottom: 40,
-      left: 0,
-      right: 0,
-      child: Column(
-        children: [
-          // 目标缩略图行
-          SizedBox(
-            height: 41,
-            child: ListView(
-              controller: _thumbnailScrollController,
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              shrinkWrap: true,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              children: [
-                Center(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      ...List.generate(
-                        widget.goals.length,
-                        (index) => _buildThumbnailItem(index),
-                      ),
-                      // 添加按钮
-                      GestureDetector(
-                        onTap: widget.onAddGoal,
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 4),
-                          width: 41,
-                          height: 41,
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.white, width: 1),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Center(
-                            child: Icon(
-                              Icons.add,
-                              color: Colors.white,
-                              size: 24,
-                            ),
+  Widget _buildBottomIndicatorsContentOnly() {
+    return Column(
+      children: [
+        // 目标缩略图行
+        SizedBox(
+          height: 41,
+          child: ListView(
+            controller: _thumbnailScrollController,
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            shrinkWrap: true,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            children: [
+              Center(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ...List.generate(
+                      widget.goals.length,
+                      (index) => _buildThumbnailItem(index),
+                    ),
+                    // 添加按钮
+                    GestureDetector(
+                      onTap: widget.onAddGoal,
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        width: 41,
+                        height: 41,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.white, width: 1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Center(
+                          child: Icon(
+                            Icons.add,
+                            color: Colors.white,
+                            size: 24,
                           ),
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 

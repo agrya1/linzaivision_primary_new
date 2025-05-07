@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import '../models/goal.dart';
+import 'package:linzaivision_primary/widgets/common/share_dialog.dart';
 
 class GoalGridView extends StatelessWidget {
   final List<Goal> goals;
@@ -222,10 +223,11 @@ class GoalGridView extends StatelessWidget {
                           dense: true,
                           onTap: () {
                             Navigator.pop(innerContext);
-                            ScaffoldMessenger.of(innerContext).showSnackBar(
-                              const SnackBar(
-                                content: Text('分享功能即将上线'),
-                                duration: Duration(seconds: 2),
+                            showDialog(
+                              context: innerContext,
+                              builder: (_) => ShareDialog(
+                                title: goal.title,
+                                backgroundImagePath: goal.imagePath,
                               ),
                             );
                           },

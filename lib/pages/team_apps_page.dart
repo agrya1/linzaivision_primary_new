@@ -27,34 +27,30 @@ class TeamAppsPage extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: const [
           _AppCard(
-            appName: '林再智能助手',
-            description: '您的智能AI助手，支持文字对话、图像生成和语音交互',
-            iconData: Icons.chat,
-            iconColor: Colors.blue,
-            appUrl: 'https://www.linzai.asia/ai-assistant',
+            appName: '临在清单',
+            description: '用色彩管理生活，重建意识秩序',
+            logoAsset: 'assets/images/applogo/linzailist_logo.png',
+            appUrl: 'https://list.linzai.asia',
           ),
           SizedBox(height: 16),
           _AppCard(
-            appName: '林再文档',
-            description: '智能文档编辑与管理，支持AI辅助写作和团队协作',
-            iconData: Icons.description,
-            iconColor: Colors.green,
-            appUrl: 'https://www.linzai.asia/docs',
+            appName: '临在笔记',
+            description: '基于色彩心理学的极简笔记',
+            logoAsset: 'assets/images/applogo/linzainote_logo.png',
+            appUrl: 'https://note.linzai.asia',
           ),
           SizedBox(height: 16),
           _AppCard(
-            appName: '林再日历',
-            description: '智能日程管理工具，帮助您高效规划时间',
-            iconData: Icons.calendar_today,
-            iconColor: Colors.orange,
+            appName: '临在心语',
+            description: '深度沟通，人与人的心灵关系',
+            logoAsset: 'assets/images/applogo/linzaiecho_logo.png',
             appUrl: 'https://www.linzai.asia/calendar',
           ),
           SizedBox(height: 16),
           _AppCard(
-            appName: '林再健康',
-            description: '个人健康管理平台，提供健康监测和生活建议',
-            iconData: Icons.favorite,
-            iconColor: Colors.red,
+            appName: '临在官网',
+            description: '意识觉醒的数字空间',
+            logoAsset: 'assets/images/applogo/linzai_logo.png',
             appUrl: 'https://www.linzai.asia/health',
           ),
         ],
@@ -66,15 +62,13 @@ class TeamAppsPage extends StatelessWidget {
 class _AppCard extends StatelessWidget {
   final String appName;
   final String description;
-  final IconData iconData;
-  final Color iconColor;
+  final String logoAsset;
   final String appUrl;
 
   const _AppCard({
     required this.appName,
     required this.description,
-    required this.iconData,
-    required this.iconColor,
+    required this.logoAsset,
     required this.appUrl,
   });
 
@@ -95,14 +89,17 @@ class _AppCard extends StatelessWidget {
               Container(
                 width: 60,
                 height: 60,
-                decoration: BoxDecoration(
-                  color: iconColor.withOpacity(0.1),
+                decoration: const BoxDecoration(
+                  color: Colors.transparent,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(
-                  iconData,
-                  color: iconColor,
-                  size: 30,
+                child: ClipOval(
+                  child: Image.asset(
+                    logoAsset,
+                    width: 48,
+                    height: 48,
+                    fit: BoxFit.contain,
+                  ),
                 ),
               ),
               const SizedBox(width: 16),

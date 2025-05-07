@@ -1068,7 +1068,7 @@ class _AddCardWidgetState extends State<_AddCardWidget> {
                             },
                             child: Text(
                               widget.titleController.text.isEmpty
-                                  ? '新建子目标'
+                                  ? '新建目标'
                                   : widget.titleController.text,
                               style: TextStyle(
                                 fontSize: 20,

@@ -15,6 +15,13 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
+  dev_dependencies:
+    flutter_launcher_icons: ^0.13.1
+
+  flutter_icons:
+    android: true
+    ios: true
+    image_path: "assets/app_icon.png"  # 路径为你的 logo 图片
 flutter:
   plugin:
     platforms:
@@ -22,4 +29,4 @@ flutter:
         package: com.fluttercandies.flutter_ali_auth
         pluginClass: FlutterAliAuthPlugin
       ios:
-        pluginClass: FlutterAliAuthPlugin 
+        pluginClass: FlutterAliAuthPlugin

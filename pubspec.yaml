@@ -34,7 +34,13 @@ dev_dependencies:
   flutter_lints: ^5.0.0
   mockito: ^5.4.4
   build_runner: ^2.4.8
+  flutter_launcher_icons: ^0.13.1
 
+flutter_icons:
+  android: true
+  ios: true
+  image_path: "assets/app_icon.png"
+  
 flutter:
   uses-material-design: true
   assets:
@@ -46,7 +52,7 @@ flutter:
     - assets/icons/chenggong.png
     - assets/icons/feiqi.png
     - assets/images/app_logo.png
-    
+    - assets/images/applogo/
   fonts:
     - family: Abhaya Libre ExtraBold
       fonts:
