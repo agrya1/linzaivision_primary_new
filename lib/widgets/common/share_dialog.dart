@@ -139,60 +139,30 @@ class _ShareDialogState extends State<ShareDialog> {
             const SizedBox(height: 16),
 
             // 底部按钮区
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                // 保存按钮
-                ElevatedButton.icon(
-                  onPressed: _isSaving ? null : _saveImageToGallery,
-                  icon: Icon(_isSaving ? null : Icons.save_alt),
-                  label: _isSaving
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('保存'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
+            Center(
+              child: ElevatedButton.icon(
+                onPressed: _isSaving ? null : _saveImageToGallery,
+                icon: Icon(_isSaving ? null : Icons.save_alt,
+                    color: Colors.black),
+                label: _isSaving
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.black),
+                      )
+                    : const Text('保存', style: TextStyle(color: Colors.black)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
                   ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                  elevation: 0,
                 ),
-
-                // 微信按钮（使用图标代替图片）
-                IconButton(
-                  icon: const Icon(Icons.wechat, color: Colors.green, size: 32),
-                  onPressed: () {
-                    // 微信分享功能（示意）
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('微信分享功能待接入')),
-                    );
-                  },
-                ),
-
-                // 微博按钮
-                IconButton(
-                  icon:
-                      const Icon(Icons.stream, color: Colors.orange, size: 32),
-                  onPressed: () {
-                    // 微博分享功能（示意）
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('微博分享功能待接入')),
-                    );
-                  },
-                ),
-
-                // QQ按钮
-                IconButton(
-                  icon: const Icon(Icons.chat, color: Colors.blue, size: 32),
-                  onPressed: () {
-                    // QQ分享功能（示意）
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('QQ分享功能待接入')),
-                    );
-                  },
-                ),
-              ],
+              ),
             ),
           ],
         ),
