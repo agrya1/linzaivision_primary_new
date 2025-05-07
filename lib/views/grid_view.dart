@@ -143,116 +143,114 @@ class GoalGridView extends StatelessWidget {
   }
 
   Widget _buildCardContent(BuildContext context, Goal goal) {
-    return Positioned(
-      left: 16,
-      right: 16,
-      bottom: 16,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            goal.title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              Builder(
-                builder: (innerContext) => GestureDetector(
-                  onTapUp: (TapUpDetails details) {
-                    if (onShowOperationMenu != null) {
-                      // 创建一个RelativeRect，表示菜单相对于屏幕的位置
-                      final RenderBox overlay = Overlay.of(innerContext)
-                          .context
-                          .findRenderObject() as RenderBox;
-                      final RenderBox button =
-                          innerContext.findRenderObject() as RenderBox;
-                      final RelativeRect position = RelativeRect.fromRect(
-                        Rect.fromPoints(
-                          button.localToGlobal(
-                            details.localPosition,
-                            ancestor: overlay,
-                          ),
-                          button.localToGlobal(
-                            button.size.bottomRight(Offset.zero),
-                            ancestor: overlay,
-                          ),
-                        ),
-                        Offset.zero & overlay.size,
-                      );
-
-                      // 显示操作菜单，将位置传递给showMenu
-                      showMenu(
-                        context: innerContext,
-                        position: position,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        elevation: 8,
-                        items: [
-                          // 删除目标
-                          PopupMenuItem(
-                            child: ListTile(
-                              leading: const Icon(Icons.delete),
-                              title: const Text('删除目标'),
-                              contentPadding: EdgeInsets.zero,
-                              dense: true,
-                              onTap: () {
-                                Navigator.pop(innerContext);
-                                // 调用删除确认对话框
-                                _showDeleteDialog(innerContext, goal);
-                              },
-                            ),
-                          ),
-                          // 分享
-                          PopupMenuItem(
-                            child: ListTile(
-                              leading: const Icon(Icons.share),
-                              title: const Text('分享'),
-                              contentPadding: EdgeInsets.zero,
-                              dense: true,
-                              onTap: () {
-                                Navigator.pop(innerContext);
-                                // 显示分享提示
-                                ScaffoldMessenger.of(innerContext).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('分享功能即将上线'),
-                                    duration: Duration(seconds: 2),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ],
-                      );
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.3),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.more_horiz,
-                      color: Colors.white,
-                      size: 20,
-                    ),
+    return Stack(
+      children: [
+        // 居中标题
+        Center(
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              goal.title,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                shadows: [
+                  Shadow(
+                    color: Colors.black54,
+                    offset: Offset(0, 2),
+                    blurRadius: 6,
                   ),
+                ],
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+        // 右下角操作按钮
+        Positioned(
+          right: 12,
+          bottom: 12,
+          child: Builder(
+            builder: (innerContext) => GestureDetector(
+              onTapUp: (TapUpDetails details) {
+                if (onShowOperationMenu != null) {
+                  final RenderBox overlay = Overlay.of(innerContext)
+                      .context
+                      .findRenderObject() as RenderBox;
+                  final RenderBox button =
+                      innerContext.findRenderObject() as RenderBox;
+                  final RelativeRect position = RelativeRect.fromRect(
+                    Rect.fromPoints(
+                      button.localToGlobal(
+                        details.localPosition,
+                        ancestor: overlay,
+                      ),
+                      button.localToGlobal(
+                        button.size.bottomRight(Offset.zero),
+                        ancestor: overlay,
+                      ),
+                    ),
+                    Offset.zero & overlay.size,
+                  );
+                  showMenu(
+                    context: innerContext,
+                    position: position,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 8,
+                    items: [
+                      PopupMenuItem(
+                        child: ListTile(
+                          leading: const Icon(Icons.delete),
+                          title: const Text('删除目标'),
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          onTap: () {
+                            Navigator.pop(innerContext);
+                            _showDeleteDialog(innerContext, goal);
+                          },
+                        ),
+                      ),
+                      PopupMenuItem(
+                        child: ListTile(
+                          leading: const Icon(Icons.share),
+                          title: const Text('分享'),
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          onTap: () {
+                            Navigator.pop(innerContext);
+                            ScaffoldMessenger.of(innerContext).showSnackBar(
+                              const SnackBar(
+                                content: Text('分享功能即将上线'),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  );
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.3),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.more_horiz,
+                  color: Colors.white,
+                  size: 20,
                 ),
               ),
-            ],
+            ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 

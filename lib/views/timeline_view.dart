@@ -1068,7 +1068,7 @@ class _AddCardWidgetState extends State<_AddCardWidget> {
                             },
                             child: Text(
                               widget.titleController.text.isEmpty
-                                  ? '新建目标'
+                                  ? '新建子目标'
                                   : widget.titleController.text,
                               style: TextStyle(
                                 fontSize: 20,
@@ -1132,7 +1132,7 @@ class _AddCardWidgetState extends State<_AddCardWidget> {
                             fontWeight: FontWeight.normal,
                           ),
                           decoration: InputDecoration(
-                            hintText: '输入愿望描述',
+                            hintText: '输入目标描述',
                             hintStyle: TextStyle(
                               color: widget.selectedImagePath != null
                                   ? Colors.white.withOpacity(0.7)
@@ -1156,7 +1156,7 @@ class _AddCardWidgetState extends State<_AddCardWidget> {
                       // 描述非编辑状态
                       : Text(
                           widget.descriptionController.text.isEmpty
-                              ? '输入愿望描述'
+                              ? '输入目标描述'
                               : widget.descriptionController.text,
                           style: TextStyle(
                             fontSize: 16,

@@ -9,6 +9,10 @@ class GoalOperationMenu extends StatelessWidget {
   final VoidCallback onShare;
   final VoidCallback onToggleCountdown;
   final bool showCountdown;
+  final VoidCallback onToggleTime;
+  final bool showTime;
+  final VoidCallback onToggleDescription;
+  final bool showDescription;
 
   const GoalOperationMenu({
     super.key,
@@ -18,6 +22,10 @@ class GoalOperationMenu extends StatelessWidget {
     required this.onShare,
     required this.onToggleCountdown,
     required this.showCountdown,
+    required this.onToggleTime,
+    required this.showTime,
+    required this.onToggleDescription,
+    required this.showDescription,
   });
 
   @override
@@ -74,6 +82,30 @@ class GoalOperationMenu extends StatelessWidget {
                 },
               ),
             ),
+          // 添加时间显示开关
+          PopupMenuItem(
+            child: ListTile(
+              leading: Icon(showTime
+                  ? Icons.access_time_filled
+                  : Icons.access_time_outlined),
+              title: Text(showTime ? '关闭时间' : '显示时间'),
+              onTap: () {
+                Navigator.pop(context);
+                onToggleTime();
+              },
+            ),
+          ),
+          // 添加描述显示开关
+          PopupMenuItem(
+            child: ListTile(
+              leading: Icon(showDescription ? Icons.info_outline : Icons.info),
+              title: Text(showDescription ? '关闭描述' : '显示描述'),
+              onTap: () {
+                Navigator.pop(context);
+                onToggleDescription();
+              },
+            ),
+          ),
         ],
       ],
     );

@@ -17,6 +17,8 @@ class FullScreenView extends StatefulWidget {
   final Function(Goal, bool)? onStatusChange;
   final Future<bool> Function(Goal, DateTime?)? onUpdateDate;
   final VoidCallback onAddGoal;
+  final bool showTime;
+  final bool showDescription;
 
   const FullScreenView({
     super.key,
@@ -33,6 +35,8 @@ class FullScreenView extends StatefulWidget {
     required this.onAddGoal,
     this.onStatusChange,
     this.onUpdateDate,
+    required this.showTime,
+    required this.showDescription,
   });
 
   @override
@@ -417,37 +421,11 @@ class _FullScreenViewState extends State<FullScreenView>
                       ),
                     ],
                   ),
-
-                // 信息按钮，放在标题的右下角
-                if (goal.id == widget.currentGoal?.id && !widget.isEditingTitle)
-                  Positioned(
-                    right: 0,
-                    bottom: 0,
-                    child: IconButton(
-                      icon: const Icon(
-                        Icons.info_outline,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                      padding: EdgeInsets.zero,
-                      constraints: BoxConstraints(),
-                      onPressed: () {
-                        setState(() {
-                          // 切换描述可见性
-                          _isDescriptionVisible = !_isDescriptionVisible;
-                          // 当打开描述区域时, 重置编辑状态
-                          if (_isDescriptionVisible) {
-                            _isEditingDescription = false;
-                          }
-                        });
-                      },
-                    ),
-                  ),
               ],
             ),
 
             // 日期部分 - 放在标题Stack外部，确保在标题下方显示
-            if (goal.targetDate != null) ...[
+            if (widget.showTime && goal.targetDate != null) ...[
               const SizedBox(height: 14), // 增加与标题的间距
               GestureDetector(
                 onTap: goal.id == widget.currentGoal?.id
@@ -470,7 +448,8 @@ class _FullScreenViewState extends State<FullScreenView>
             ],
 
             // 添加描述显示区域
-            if (_isDescriptionVisible && goal.id == widget.currentGoal?.id) ...[
+            if (widget.showDescription &&
+                goal.id == widget.currentGoal?.id) ...[
               const SizedBox(height: 12),
               _buildDescriptionEditor(goal),
             ],

@@ -35,6 +35,7 @@ class GoalPage extends StatefulWidget {
 
 class GoalPageState extends State<GoalPage> {
   late List<Goal> goals;
+  List<Goal> allGoals = [];
   int currentView = 0; // 视图模式：0 - 全屏视图，1 - 时间轴视图，2 - 网格视图
   Goal? currentGoal;
   bool _isLoading = true;
@@ -52,6 +53,10 @@ class GoalPageState extends State<GoalPage> {
 
   // 添加倒计时显示状态变量:
   bool _showCountdown = false; // 默认不显示倒计时
+  // 添加时间显示状态变量:
+  bool _showTime = true; // 默认显示时间
+  // 添加描述显示状态变量:
+  bool _showDescription = true; // 默认显示描述
 
   @override
   void initState() {
@@ -111,6 +116,9 @@ class GoalPageState extends State<GoalPage> {
         _error = null;
       });
 
+      // 始终加载全量目标树
+      allGoals = await _dbHelper.getGoalTree();
+
       final loadedGoals =
           await _dbHelper.getGoals(parentId: widget.parentGoal?.id);
 
@@ -165,25 +173,20 @@ class GoalPageState extends State<GoalPage> {
   /// 刷新目标树
   Future<void> _refreshGoalTree() async {
     try {
+      // 始终加载全量目标树
+      allGoals = await _dbHelper.getGoalTree();
       if (widget.parentGoal == null) {
-        // 如果是根页面,获取完整的目标树
-        final rootGoals = await _dbHelper.getGoalTree();
+        // 根页面goals为全量树
         setState(() {
-          goals = rootGoals;
+          goals = allGoals;
           if (goals.isNotEmpty && currentGoal == null) {
             currentGoal = goals[0];
           }
         });
       } else {
-        // 如果是子目标页面,只获取当前父目标下的子目标
+        // 子页面goals为当前父目标下的子目标
         final subGoals =
             await _dbHelper.getGoals(parentId: widget.parentGoal!.id);
-
-        print('刷新子目标: 找到${subGoals.length}个子目标');
-        if (subGoals.isNotEmpty) {
-          print('第一个子目标标题: ${subGoals.first.title}');
-        }
-
         setState(() {
           goals = subGoals;
           if (goals.isNotEmpty && currentGoal == null) {
@@ -318,54 +321,18 @@ class GoalPageState extends State<GoalPage> {
         title: widget.parentGoal != null
             ? GestureDetector(
                 onTap: () => Navigator.pop(context),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
-                  decoration: BoxDecoration(
-                    color: currentView == 0
-                        ? Colors.black.withOpacity(0.2)
-                        : Colors.grey.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
+                child: Text(
+                  widget.parentGoal!.title.length > 9
+                      ? widget.parentGoal!.title.substring(0, 9) + '…'
+                      : widget.parentGoal!.title,
+                  style: TextStyle(
+                    fontSize: 18,
+                    color: currentView == 0 ? Colors.white : Colors.black,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: 'Songti',
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.arrow_back_ios,
-                        size: 16,
-                        color: currentView == 0 ? Colors.white : Colors.black,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        widget.parentGoal!.title,
-                        style: TextStyle(
-                          fontSize: 18,
-                          color: currentView == 0 ? Colors.white : Colors.black,
-                          fontWeight: FontWeight.w600,
-                          fontFamily: 'Songti',
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (currentView != 0) ...[
-                        const SizedBox(width: 4),
-                        const Icon(
-                          Icons.subdirectory_arrow_right_outlined,
-                          size: 16,
-                          color: Colors.black54,
-                        ),
-                        const SizedBox(width: 2),
-                        const Text(
-                          "子目标",
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.black54,
-                            fontWeight: FontWeight.normal,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               )
             : null,
@@ -404,6 +371,10 @@ class GoalPageState extends State<GoalPage> {
               },
               onToggleCountdown: _toggleCountdown,
               showCountdown: _showCountdown,
+              onToggleTime: _toggleShowTime,
+              showTime: _showTime,
+              onToggleDescription: _toggleShowDescription,
+              showDescription: _showDescription,
             ),
         ],
       ),
@@ -515,6 +486,8 @@ class GoalPageState extends State<GoalPage> {
             }
           }
         },
+        showTime: _showTime,
+        showDescription: _showDescription,
       );
     }
 
@@ -582,6 +555,8 @@ class GoalPageState extends State<GoalPage> {
               }
             }
           },
+          showTime: _showTime,
+          showDescription: _showDescription,
         ),
         // 拆解目标按钮
         if (currentGoal != null)
@@ -2150,7 +2125,7 @@ class GoalPageState extends State<GoalPage> {
         child: SafeArea(
           bottom: false,
           child: GoalTreeView(
-            goals: goals,
+            goals: allGoals,
             onSearchTap: () {
               showSearch(
                 context: context,
@@ -2185,5 +2160,17 @@ class GoalPageState extends State<GoalPage> {
         ),
       ),
     );
+  }
+
+  void _toggleShowTime() {
+    setState(() {
+      _showTime = !_showTime;
+    });
+  }
+
+  void _toggleShowDescription() {
+    setState(() {
+      _showDescription = !_showDescription;
+    });
   }
 }

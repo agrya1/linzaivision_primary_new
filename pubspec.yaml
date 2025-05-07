@@ -52,3 +52,7 @@ flutter:
       fonts:
         - asset: assets/fonts/AbhayaLibre-ExtraBold.ttf
           weight: 800
+    - family: STZhongsong
+      fonts:
+        - asset: assets/fonts/STZhongsong.ttf
+          weight: 800

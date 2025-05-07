@@ -17,12 +17,9 @@ Future<void> main() async {
     initializeDatabase();
   }
 
-  // 创建API服务实例
-  final apiService = ApiService();
-
   // 初始化认证服务
   try {
-    final authService = AuthService(apiService: apiService);
+    final authService = AuthService();
     await authService.init();
     debugPrint('认证服务初始化成功');
   } catch (e) {
@@ -47,7 +44,7 @@ class MyApp extends StatelessWidget {
         Provider<ApiService>.value(value: apiService),
         // 提供全局访问AuthService的能力
         ChangeNotifierProvider<AuthService>(
-          create: (context) => AuthService(apiService: apiService),
+          create: (context) => AuthService(),
         ),
       ],
       child: MaterialApp(
@@ -68,21 +65,6 @@ class MyHomePage extends StatelessWidget {
     return Stack(
       children: [
         const GoalPage(),
-        Positioned(
-          right: 16,
-          bottom: 80,
-          child: FloatingActionButton(
-            heroTag: 'test',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const LoginTestPage()),
-              );
-            },
-            backgroundColor: Colors.amber,
-            child: const Icon(Icons.bug_report),
-          ),
-        ),
       ],
     );
   }
