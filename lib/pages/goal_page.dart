@@ -17,6 +17,7 @@ import 'package:linzaivision_primary/widgets/common/share_dialog.dart';
 import 'package:linzaivision_primary/services/auth_service.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:io';
 
 /// 主页面
 class GoalPage extends StatefulWidget {
@@ -127,15 +128,15 @@ class GoalPageState extends State<GoalPage> {
         if (loadedGoals.isEmpty && widget.parentGoal == null) {
           goals = [
             Goal(
-              title: '目標一',
-              description: '描述目標一',
+              title: '开启21天显化之旅',
+              description: '描述你的心愿',
               imagePath: 'assets/images/default/default.jpg',
               createdTime: DateTime.now(),
               parentId: null, // 明确设置为根目标
             ),
             Goal(
-              title: '目標二',
-              description: '描述目標二',
+              title: '愿景二',
+              description: '描述你的心愿',
               imagePath: 'assets/images/default/default2.jpg',
               createdTime:
                   DateTime.now().add(const Duration(seconds: 1)), // 确保创建时间不同
@@ -1174,356 +1175,384 @@ class GoalPageState extends State<GoalPage> {
     DateTime? selectedDate;
     String? imagePath;
 
+    // 创建一个StatefulBuilder以确保弹窗内的状态更新能够刷新UI
     showDialog(
       context: context,
       barrierDismissible: true,
-      builder: (BuildContext context) => Dialog(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 20),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(28),
-        ),
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 400),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // 标题栏
-              Container(
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      color: Colors.black.withOpacity(0.1),
-                      width: 1,
+      builder: (BuildContext context) => StatefulBuilder(
+          builder: (BuildContext context, StateSetter setDialogState) {
+        return Dialog(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(28),
+          ),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // 标题栏
+                Container(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(
+                        color: Colors.black.withOpacity(0.1),
+                        width: 1,
+                      ),
                     ),
                   ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.parentGoal != null ? '新建子目标' : '新建目标',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black.withOpacity(0.9),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.parentGoal != null ? '新建子目标' : '新建目标',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black.withOpacity(0.9),
+                            ),
                           ),
-                        ),
-                        if (widget.parentGoal != null) ...[
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.subdirectory_arrow_right,
-                                size: 16,
-                                color: Colors.black.withOpacity(0.5),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                widget.parentGoal!.title,
-                                style: TextStyle(
-                                  fontSize: 14,
+                          if (widget.parentGoal != null) ...[
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.subdirectory_arrow_right,
+                                  size: 16,
                                   color: Colors.black.withOpacity(0.5),
                                 ),
-                              ),
-                            ],
-                          ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  widget.parentGoal!.title,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.black.withOpacity(0.5),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
-                      ],
-                    ),
-                    IconButton(
-                      icon: Icon(
-                        Icons.close,
-                        color: Colors.black.withOpacity(0.6),
-                        size: 24,
                       ),
-                      onPressed: () => Navigator.pop(context),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ],
+                      IconButton(
+                        icon: Icon(
+                          Icons.close,
+                          color: Colors.black.withOpacity(0.6),
+                          size: 24,
+                        ),
+                        onPressed: () => Navigator.pop(context),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              // 内容区域
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 标题前添加必填标识
-                    Row(
-                      children: [
-                        const Text(
-                          '*',
-                          style: TextStyle(
-                            color: Colors.red,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
+                // 内容区域
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 标题前添加必填标识
+                      Row(
+                        children: [
+                          const Text(
+                            '*',
+                            style: TextStyle(
+                              color: Colors.red,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '目标标题',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.black.withOpacity(0.6),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    // 目标标题输入
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.grey[50],
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: TextField(
-                        controller: titleController,
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.black.withOpacity(0.8),
-                        ),
-                        decoration: InputDecoration(
-                          hintText: '输入目标标题',
-                          hintStyle: TextStyle(
-                            color: Colors.black.withOpacity(0.3),
-                          ),
-                          border: InputBorder.none,
-                          contentPadding:
-                              const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    // 描述标签(非必填)
-                    Text(
-                      '目标描述',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.black.withOpacity(0.6),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    // 目标描述输入
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.grey[50],
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: TextField(
-                        controller: descriptionController,
-                        maxLines: 3,
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.black.withOpacity(0.8),
-                        ),
-                        decoration: InputDecoration(
-                          hintText: '输入目标描述',
-                          hintStyle: TextStyle(
-                            color: Colors.black.withOpacity(0.3),
-                          ),
-                          border: InputBorder.none,
-                          contentPadding:
-                              const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    // 日期选择和图片选择标签行
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            '目标截止日期',
+                          const SizedBox(width: 4),
+                          Text(
+                            '目标标题',
                             style: TextStyle(
                               fontSize: 14,
                               color: Colors.black.withOpacity(0.6),
                               fontWeight: FontWeight.w500,
                             ),
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      // 目标标题输入
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.grey[50],
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Row(
-                            children: [
-                              const Text(
-                                '*',
-                                style: TextStyle(
-                                  color: Colors.red,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                '目标配图',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.black.withOpacity(0.6),
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: TextField(
+                          controller: titleController,
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.black.withOpacity(0.8),
+                          ),
+                          decoration: InputDecoration(
+                            hintText: '输入目标标题',
+                            hintStyle: TextStyle(
+                              color: Colors.black.withOpacity(0.3),
+                            ),
+                            border: InputBorder.none,
+                            contentPadding:
+                                const EdgeInsets.symmetric(vertical: 12),
                           ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    // 日期选择和图片选择
-                    Row(
-                      children: [
-                        // 日期选择按钮
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () async {
-                              final DateTime? picked = await showDatePicker(
-                                context: context,
-                                initialDate: DateTime.now(),
-                                firstDate: DateTime.now(),
-                                lastDate: DateTime(2101),
-                              );
-                              if (picked != null) {
-                                setState(() {
-                                  selectedDate = picked;
-                                });
-                              }
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 12,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.grey[50],
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.max,
-                                children: [
-                                  Icon(
-                                    Icons.calendar_today,
-                                    size: 16,
-                                    color: Colors.black.withOpacity(0.6),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    selectedDate == null
-                                        ? '选择日期'
-                                        : DateFormat('yyyy-MM-dd')
-                                            .format(selectedDate!),
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.black.withOpacity(0.6),
-                                    ),
-                                  ),
-                                ],
+                      ),
+                      const SizedBox(height: 16),
+                      // 描述标签(非必填)
+                      Text(
+                        '目标描述',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.black.withOpacity(0.6),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      // 目标描述输入
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.grey[50],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: TextField(
+                          controller: descriptionController,
+                          maxLines: 3,
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.black.withOpacity(0.8),
+                          ),
+                          decoration: InputDecoration(
+                            hintText: '输入目标描述',
+                            hintStyle: TextStyle(
+                              color: Colors.black.withOpacity(0.3),
+                            ),
+                            border: InputBorder.none,
+                            contentPadding:
+                                const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      // 日期选择和图片选择标签行
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '目标截止日期',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.black.withOpacity(0.6),
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        // 图片选择按钮，修改为调用_showImagePickerForNewGoal
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () {
-                              // 显示选择愿望配图弹窗
-                              _showImagePickerForNewGoal((selectedImagePath) {
-                                setState(() {
-                                  imagePath = selectedImagePath;
-                                });
-                              });
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 12,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.grey[50],
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.max,
-                                children: [
-                                  Icon(
-                                    Icons.image_outlined,
-                                    size: 16,
-                                    color: Colors.black.withOpacity(0.6),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Row(
+                              children: [
+                                const Text(
+                                  '*',
+                                  style: TextStyle(
+                                    color: Colors.red,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
                                   ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    imagePath == null ? '选择图片' : '已选择图片',
-                                    style: TextStyle(
-                                      fontSize: 14,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '目标配图',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.black.withOpacity(0.6),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      // 日期选择和图片选择
+                      Row(
+                        children: [
+                          // 日期选择按钮
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () async {
+                                // 使用自定义日期选择器替代Flutter自带的showDatePicker
+                                DateTime? picked = await _showCustomDatePicker(
+                                    context,
+                                    selectedDate ?? DateTime.now(),
+                                    "选择目标截止日期");
+                                if (picked != null) {
+                                  // 使用StatefulBuilder的setState刷新弹窗UI
+                                  setDialogState(() {
+                                    selectedDate = picked;
+                                  });
+                                }
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 12,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[50],
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.max,
+                                  children: [
+                                    Icon(
+                                      Icons.calendar_today,
+                                      size: 16,
                                       color: Colors.black.withOpacity(0.6),
                                     ),
-                                  ),
-                                ],
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      selectedDate == null
+                                          ? '选择日期'
+                                          : DateFormat('yyyy-MM-dd')
+                                              .format(selectedDate!),
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.black.withOpacity(0.6),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              // 底部按钮
-              Container(
-                margin: const EdgeInsets.all(24),
-                child: ElevatedButton(
-                  onPressed: () {
-                    if (titleController.text.isNotEmpty) {
-                      final newGoal = Goal(
-                        title: titleController.text,
-                        description: descriptionController.text,
-                        imagePath:
-                            imagePath ?? 'assets/images/default/default.jpg',
-                        createdTime: DateTime.now(),
-                        targetDate: selectedDate,
-                        parentId: widget.parentGoal?.id,
-                      );
-
-                      // 先关闭弹窗
-                      Navigator.pop(context);
-
-                      // 添加新目标
-                      _addNewGoal(newGoal);
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                          const SizedBox(width: 12),
+                          // 图片选择按钮，修改为调用_showImagePickerForNewGoal
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () {
+                                // 显示选择愿望配图弹窗
+                                _showImagePickerForNewGoal((selectedImagePath) {
+                                  // 使用StatefulBuilder的setState刷新弹窗UI
+                                  setDialogState(() {
+                                    imagePath = selectedImagePath;
+                                  });
+                                });
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 12,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[50],
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.max,
+                                  children: [
+                                    imagePath == null
+                                        ? Icon(
+                                            Icons.image_outlined,
+                                            size: 16,
+                                            color:
+                                                Colors.black.withOpacity(0.6),
+                                          )
+                                        : ClipRRect(
+                                            borderRadius:
+                                                BorderRadius.circular(4),
+                                            child:
+                                                imagePath!.startsWith('assets/')
+                                                    ? Image.asset(
+                                                        imagePath!,
+                                                        width: 20,
+                                                        height: 20,
+                                                        fit: BoxFit.cover,
+                                                      )
+                                                    : Image.file(
+                                                        File(imagePath!),
+                                                        width: 20,
+                                                        height: 20,
+                                                        fit: BoxFit.cover,
+                                                      ),
+                                          ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        imagePath == null ? '选择图片' : '已选择图片',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.black.withOpacity(0.6),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                  child: Text(
-                    widget.parentGoal != null ? '创建子目标' : '创建目标',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+                ),
+                // 底部按钮
+                Container(
+                  margin: const EdgeInsets.all(24),
+                  child: ElevatedButton(
+                    onPressed: () {
+                      if (titleController.text.isNotEmpty) {
+                        final newGoal = Goal(
+                          title: titleController.text,
+                          description: descriptionController.text,
+                          imagePath:
+                              imagePath ?? 'assets/images/default/default.jpg',
+                          createdTime: DateTime.now(),
+                          targetDate: selectedDate,
+                          parentId: widget.parentGoal?.id,
+                        );
+
+                        // 先关闭弹窗
+                        Navigator.pop(context);
+
+                        // 添加新目标
+                        _addNewGoal(newGoal);
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.black,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    child: Text(
+                      widget.parentGoal != null ? '创建子目标' : '创建目标',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      }),
     );
   }
 
@@ -1692,6 +1721,119 @@ class GoalPageState extends State<GoalPage> {
         );
       },
     );
+  }
+
+  // 添加自定义日期选择对话框方法
+  Future<DateTime?> _showCustomDatePicker(
+    BuildContext context,
+    DateTime initialDate,
+    String title,
+  ) async {
+    DateTime tempSelectedDate = initialDate;
+
+    return await showDialog<DateTime>(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setState) {
+            return Dialog(
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20)),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 日期选择器部分 - 简洁版本，无标题
+                  Container(
+                    height: 400,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Theme(
+                      data: ThemeData.light().copyWith(
+                        primaryColor: Colors.black,
+                        colorScheme: ColorScheme.light(
+                          primary: Colors.black,
+                          onPrimary: Colors.white,
+                          onSurface: Colors.black87,
+                        ),
+                      ),
+                      child: CalendarDatePicker(
+                        initialDate: tempSelectedDate,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                        onDateChanged: (DateTime date) {
+                          setState(() {
+                            tempSelectedDate = date;
+                          });
+                        },
+                      ),
+                    ),
+                  ),
+
+                  // 底部按钮 - 仅保留取消和确定
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.grey[600],
+                          ),
+                          child:
+                              const Text('取消', style: TextStyle(fontSize: 16)),
+                        ),
+                        const SizedBox(width: 16),
+                        ElevatedButton(
+                          onPressed: () =>
+                              Navigator.pop(context, tempSelectedDate),
+                          style: ButtonStyle(
+                            backgroundColor: MaterialStateProperty.all<Color>(
+                                const Color(0xFF000000)),
+                            foregroundColor:
+                                MaterialStateProperty.all<Color>(Colors.white),
+                            padding:
+                                MaterialStateProperty.all<EdgeInsetsGeometry>(
+                                    const EdgeInsets.symmetric(
+                                        horizontal: 24, vertical: 10)),
+                            shape: MaterialStateProperty.all<
+                                RoundedRectangleBorder>(
+                              RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            elevation: MaterialStateProperty.all<double>(0),
+                          ),
+                          child:
+                              const Text('确定', style: TextStyle(fontSize: 16)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // 中文格式化日期显示
+  String _formatDateChinese(DateTime date) {
+    // 只显示年份
+    if (date.month == 1 && date.day == 1) {
+      return '${date.year}年';
+    }
+    // 显示年月
+    else if (date.day == 1) {
+      return '${date.year}年${date.month}月';
+    }
+    // 显示完整日期
+    else {
+      return '${date.year}年${date.month}月${date.day}日';
+    }
   }
 
   // 添加设置页面的导航方法

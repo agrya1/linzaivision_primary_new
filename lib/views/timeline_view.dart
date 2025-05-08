@@ -410,54 +410,15 @@ class _TimelineViewState extends State<TimelineView> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // 标题和当前选择的日期显示
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    color: Theme.of(context).primaryColor,
-                    child: Column(
-                      children: [
-                        Text(
-                          '目标：${goal.title}',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 8),
-                        // 当前选择的日期
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            _formatDateChinese(tempSelectedDate),
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // 日期选择器部分
+                  // 日期选择器部分 - 简洁版本，无标题
                   Container(
                     height: 400,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Theme(
                       data: ThemeData.light().copyWith(
-                        primaryColor: Theme.of(context).primaryColor,
+                        primaryColor: Colors.black,
                         colorScheme: ColorScheme.light(
-                          primary: Theme.of(context).primaryColor,
+                          primary: Colors.black,
                           onPrimary: Colors.white,
                           onSurface: Colors.black87,
                         ),
@@ -475,21 +436,12 @@ class _TimelineViewState extends State<TimelineView> {
                     ),
                   ),
 
-                  // 底部按钮
+                  // 底部按钮 - 仅保留取消和确定
                   Padding(
                     padding: const EdgeInsets.all(16),
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        // 清除日期按钮
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, null),
-                          style: TextButton.styleFrom(
-                            foregroundColor: Colors.red,
-                          ),
-                          child: const Text('清除日期',
-                              style: TextStyle(fontSize: 16)),
-                        ),
                         TextButton(
                           onPressed: () => Navigator.pop(context),
                           style: TextButton.styleFrom(
@@ -498,12 +450,13 @@ class _TimelineViewState extends State<TimelineView> {
                           child:
                               const Text('取消', style: TextStyle(fontSize: 16)),
                         ),
+                        const SizedBox(width: 16),
                         ElevatedButton(
                           onPressed: () =>
                               Navigator.pop(context, tempSelectedDate),
                           style: ButtonStyle(
                             backgroundColor: MaterialStateProperty.all<Color>(
-                                const Color(0xFF1976D2)), // 使用固定的蓝色
+                                const Color(0xFF000000)),
                             foregroundColor:
                                 MaterialStateProperty.all<Color>(Colors.white),
                             padding:
@@ -513,14 +466,13 @@ class _TimelineViewState extends State<TimelineView> {
                             shape: MaterialStateProperty.all<
                                 RoundedRectangleBorder>(
                               RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
+                                borderRadius: BorderRadius.circular(8),
                               ),
                             ),
-                            elevation: MaterialStateProperty.all<double>(2),
+                            elevation: MaterialStateProperty.all<double>(0),
                           ),
-                          child: const Text('确定',
-                              style: TextStyle(
-                                  fontSize: 16, fontWeight: FontWeight.bold)),
+                          child:
+                              const Text('确定', style: TextStyle(fontSize: 16)),
                         ),
                       ],
                     ),
@@ -632,51 +584,15 @@ class _TimelineViewState extends State<TimelineView> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // 标题和当前选择的日期显示
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    color: Theme.of(context).primaryColor,
-                    child: Column(
-                      children: [
-                        const Text(
-                          '选择目标完成日期',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        // 当前选择的日期
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            _formatDateChinese(tempSelectedDate),
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // 日期选择器部分
+                  // 日期选择器部分 - 简洁版本，无标题
                   Container(
                     height: 400,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Theme(
                       data: ThemeData.light().copyWith(
-                        primaryColor: Theme.of(context).primaryColor,
+                        primaryColor: Colors.black,
                         colorScheme: ColorScheme.light(
-                          primary: Theme.of(context).primaryColor,
+                          primary: Colors.black,
                           onPrimary: Colors.white,
                           onSurface: Colors.black87,
                         ),
@@ -694,11 +610,11 @@ class _TimelineViewState extends State<TimelineView> {
                     ),
                   ),
 
-                  // 底部按钮
+                  // 底部按钮 - 仅保留取消和确定
                   Padding(
                     padding: const EdgeInsets.all(16),
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         TextButton(
                           onPressed: () => Navigator.pop(context),
@@ -708,12 +624,13 @@ class _TimelineViewState extends State<TimelineView> {
                           child:
                               const Text('取消', style: TextStyle(fontSize: 16)),
                         ),
+                        const SizedBox(width: 16),
                         ElevatedButton(
                           onPressed: () =>
                               Navigator.pop(context, tempSelectedDate),
                           style: ButtonStyle(
                             backgroundColor: MaterialStateProperty.all<Color>(
-                                const Color(0xFF1976D2)), // 使用固定的蓝色
+                                const Color(0xFF000000)),
                             foregroundColor:
                                 MaterialStateProperty.all<Color>(Colors.white),
                             padding:
@@ -723,14 +640,13 @@ class _TimelineViewState extends State<TimelineView> {
                             shape: MaterialStateProperty.all<
                                 RoundedRectangleBorder>(
                               RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
+                                borderRadius: BorderRadius.circular(8),
                               ),
                             ),
-                            elevation: MaterialStateProperty.all<double>(2),
+                            elevation: MaterialStateProperty.all<double>(0),
                           ),
-                          child: const Text('确定',
-                              style: TextStyle(
-                                  fontSize: 16, fontWeight: FontWeight.bold)),
+                          child:
+                              const Text('确定', style: TextStyle(fontSize: 16)),
                         ),
                       ],
                     ),

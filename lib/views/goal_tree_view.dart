@@ -76,7 +76,7 @@ class _GoalTreeViewState extends State<GoalTreeView> {
                 mainAxisAlignment: MainAxisAlignment.start,
                 children: [
                   Text(
-                    '心願池',
+                    '心愿池',
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
@@ -100,7 +100,7 @@ class _GoalTreeViewState extends State<GoalTreeView> {
                           color: Theme.of(context)
                               .colorScheme
                               .outline
-                              .withOpacity(0.2),
+                              .withOpacity(0.1),
                         ),
                       ),
                     ),
@@ -112,7 +112,7 @@ class _GoalTreeViewState extends State<GoalTreeView> {
                         ),
                         const SizedBox(width: 12),
                         Text(
-                          '搜索目标',
+                          '搜索心愿',
                           style:
                               Theme.of(context).textTheme.bodyLarge?.copyWith(
                                     color: Theme.of(context)
@@ -142,17 +142,10 @@ class _GoalTreeViewState extends State<GoalTreeView> {
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
           decoration: BoxDecoration(
             color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 4,
-                offset: const Offset(0, -2),
-              ),
-            ],
             border: Border(
               top: BorderSide(
                 color: Colors.grey[200]!,
-                width: 1,
+                width: 0.5,
               ),
             ),
           ),

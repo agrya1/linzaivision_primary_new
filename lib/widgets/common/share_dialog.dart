@@ -123,8 +123,8 @@ class _ShareDialogState extends State<ShareDialog> {
                           shadows: [
                             Shadow(
                               offset: Offset(1, 1),
-                              blurRadius: 3,
-                              color: Colors.black54,
+                              blurRadius: 2,
+                              color: Color.fromRGBO(0, 0, 0, 0.157),
                             ),
                           ],
                         ),
