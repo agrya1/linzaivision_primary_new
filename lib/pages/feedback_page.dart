@@ -177,10 +177,10 @@ class _FeedbackPageState extends State<FeedbackPage> {
                   onPressed: _submitFeedback,
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    backgroundColor: Theme.of(context).primaryColor,
-                    foregroundColor: Colors.white,
+                    backgroundColor: Colors.black,
+                    foregroundColor: Colors.black,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(10),
                     ),
                     elevation: 2,
                   ),
@@ -189,7 +189,7 @@ class _FeedbackPageState extends State<FeedbackPage> {
                     style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: Colors.black),
+                        color: Colors.white),
                   ),
                 ),
               ),

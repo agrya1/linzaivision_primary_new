@@ -95,7 +95,7 @@ class AboutPage extends StatelessWidget {
 
             // 版权信息
             Text(
-              '© 2024 Linzai Vision',
+              '© 2025 Linzai Vision',
               style: TextStyle(
                 fontSize: 14,
                 color: Colors.grey[500],
@@ -106,7 +106,7 @@ class AboutPage extends StatelessWidget {
 
             // 开发者信息
             Text(
-              'Developed with ❤️',
+              'Developed with linzai team',
               style: TextStyle(
                 fontSize: 14,
                 color: Colors.grey[500],

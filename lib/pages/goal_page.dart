@@ -15,6 +15,8 @@ import 'package:linzaivision_primary/pages/auth/login_page.dart';
 import 'package:linzaivision_primary/pages/membership/membership_page.dart';
 import 'package:linzaivision_primary/widgets/common/share_dialog.dart';
 import 'package:linzaivision_primary/services/auth_service.dart';
+import 'package:linzaivision_primary/widgets/pickers/image_picker_dialog.dart';
+import 'package:linzaivision_primary/widgets/pickers/membership_prompt_dialog.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
@@ -73,11 +75,13 @@ class GoalPageState extends State<GoalPage> {
     // 初始化空目标列表
     goals = [];
 
+    // 立即检查用户登录状态
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkLoginStatus();
+    });
+
     // 加载数据
     _loadGoals();
-
-    // 检查登录状态
-    _checkLoginStatus();
 
     // 确保在第一帧渲染后子目标页面始终显示时间轴视图
     if (widget.parentGoal != null) {
@@ -97,14 +101,18 @@ class GoalPageState extends State<GoalPage> {
     final authService = Provider.of<AuthService>(context, listen: false);
     if (authService.isLoggedIn) {
       // 根据实际会员级别设置状态
-      // 从用户信息中获取会员级别
       final prefs = await SharedPreferences.getInstance();
+      // 获取会员级别，如未找到默认为普通用户（级别1）
+      final memberLevel = prefs.getInt('member_level') ?? 1;
+
       setState(() {
-        _membershipStatus = prefs.getInt('member_level') ?? 1;
+        _membershipStatus = memberLevel;
+        print('用户已登录，会员状态: $_membershipStatus'); // 添加日志
       });
     } else {
       setState(() {
         _membershipStatus = 0; // 未登录状态
+        print('用户未登录，会员状态: 0'); // 添加日志
       });
     }
   }
@@ -786,44 +794,23 @@ class GoalPageState extends State<GoalPage> {
     );
   }
 
-  // 获取预置图片列表
-  List<String> _getDefaultImages() {
-    // 使用assets/images/default文件夹中的图片
-    return [
-      'assets/images/default/default.jpg',
-      'assets/images/default/default2.jpg',
-      'assets/images/default/default3.jpg',
-      'assets/images/default/default4.png',
-      'assets/images/default/default5.png',
-      'assets/images/default/default6.png',
-      'assets/images/default/default7.png',
-      'assets/images/default/default8.png',
-      'assets/images/default/default9.png',
-      'assets/images/default/default10.png',
-      'assets/images/default/default11.png',
-    ];
-  }
-
-  // 修改选择图片的方法
-  Future<void> _showImagePicker() async {
+  // 修改删除目标的方法
+  Future<void> _deleteCurrentGoal() async {
+    final context = this.context;
     if (!mounted) return;
 
-    // 获取预置图片
-    final defaultImages = _getDefaultImages();
-
-    // 弹出图片选择对话框而不是直接打开相册
     await showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
         return Dialog(
           backgroundColor: Colors.white,
           elevation: 0,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 16),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(28),
           ),
           child: Container(
-            constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
+            constraints: const BoxConstraints(maxWidth: 400),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -835,12 +822,11 @@ class GoalPageState extends State<GoalPage> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        '选择愿望配图',
+                        '删除目标',
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.w600,
                           color: Colors.black.withOpacity(0.9),
-                          fontFamily: 'STZhongsong',
                         ),
                       ),
                       IconButton(
@@ -856,121 +842,81 @@ class GoalPageState extends State<GoalPage> {
                     ],
                   ),
                 ),
-                // 内容区域 - 网格展示预置图片
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: GridView.builder(
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        childAspectRatio: 1.5,
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
+                // 内容区域
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                  child: Column(
+                    children: [
+                      Text(
+                        '确定要删除这个目标吗？',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.black.withOpacity(0.8),
+                        ),
                       ),
-                      itemCount: defaultImages.length,
-                      itemBuilder: (context, index) {
-                        final imagePath = defaultImages[index];
-
-                        return GestureDetector(
-                          onTap: () {
-                            // 直接使用预置图片
-                            final updatedGoal = currentGoal!.copyWith(
-                              imagePath: imagePath,
-                            );
-                            _updateGoal(updatedGoal).then((_) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('已选择图片: $imagePath')),
-                              );
-                              Navigator.pop(dialogContext);
-                            });
-                          },
-                          child: Container(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                )
-                              ],
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  ColoredBox(color: Colors.grey.shade200),
-                                  Image.asset(
-                                    imagePath,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) {
-                                      print('图片加载错误: $imagePath, 错误: $error');
-                                      return Container(
-                                        color: Colors.grey[300],
-                                        child: const Center(
-                                          child: Icon(
-                                            Icons.image_not_supported,
-                                            color: Colors.grey,
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ],
+                      const SizedBox(height: 8),
+                      Text(
+                        '删除后将无法恢复',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.black.withOpacity(0.5),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      // 按钮区域
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextButton(
+                              onPressed: () => Navigator.pop(dialogContext),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.black,
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(24),
+                                ),
+                              ),
+                              child: const Text(
+                                '取消',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
                           ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-                // 底部按钮 - 从本地相册选择
-                Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: ElevatedButton.icon(
-                    onPressed: () async {
-                      Navigator.pop(dialogContext);
-
-                      // 打开系统相册
-                      final ImagePicker picker = ImagePicker();
-                      try {
-                        final XFile? image =
-                            await picker.pickImage(source: ImageSource.gallery);
-                        if (!mounted) return;
-                        if (image != null) {
-                          final updatedGoal = currentGoal!.copyWith(
-                            imagePath: image.path,
-                          );
-                          await _updateGoal(updatedGoal);
-                        }
-                      } catch (e) {
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('选择图片失败，请重试')),
-                        );
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.black,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(24),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () {
+                                Navigator.pop(dialogContext);
+                                if (currentGoal != null) {
+                                  _deleteGoal(currentGoal!);
+                                }
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(24),
+                                ),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
+                              ),
+                              child: const Text(
+                                '删除',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    icon: const Icon(Icons.photo_library),
-                    label: const Text(
-                      '从相册选择',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        fontFamily: 'STZhongsong',
-                      ),
-                    ),
+                    ],
                   ),
                 ),
               ],
@@ -1170,6 +1116,43 @@ class GoalPageState extends State<GoalPage> {
 
   // 添加新建目标的方法
   void _showAddGoalDialog() {
+    print('添加新目标，当前会员状态: $_membershipStatus');
+
+    // 如果是顶级目标，需要检查权限和数量限制
+    if (widget.parentGoal == null) {
+      // 重新获取AuthService确认登录状态
+      final authService = Provider.of<AuthService>(context, listen: false);
+      print('AuthService登录状态: ${authService.isLoggedIn}');
+
+      // 未登录用户需要先登录
+      if (!authService.isLoggedIn) {
+        print('用户未登录，跳转登录页面');
+        _navigateToLogin(context);
+        return;
+      }
+
+      // 获取会员级别
+      final memberLevel = _membershipStatus > 0 ? _membershipStatus : 1;
+
+      // 普通用户（会员级别为1）检查项目数量限制
+      if (memberLevel == 1) {
+        // 获取顶级目标的数量
+        final rootGoalsCount =
+            goals.where((goal) => goal.parentId == null).length;
+        print('普通用户，当前顶级目标数量: $rootGoalsCount');
+
+        // 普通用户最多3个项目，也就是达到3个后才限制
+        if (rootGoalsCount >= 3) {
+          print('达到普通用户项目上限，显示会员提示');
+          _showMembershipLimitPrompt();
+          return;
+        }
+      }
+      // 会员用户 (会员级别 >= 2) 不做数量限制
+      print('用户会员状态: $memberLevel，允许创建新项目');
+    }
+
+    // 以下是原有的添加目标弹窗逻辑
     final TextEditingController titleController = TextEditingController();
     final TextEditingController descriptionController = TextEditingController();
     DateTime? selectedDate;
@@ -1223,14 +1206,12 @@ class GoalPageState extends State<GoalPage> {
                             const SizedBox(height: 4),
                             Row(
                               children: [
-                                Icon(
-                                  Icons.subdirectory_arrow_right,
-                                  size: 16,
-                                  color: Colors.black.withOpacity(0.5),
-                                ),
-                                const SizedBox(width: 4),
                                 Text(
-                                  widget.parentGoal!.title,
+                                  widget.parentGoal!.title.length > 15
+                                      ? widget.parentGoal!.title
+                                              .substring(0, 12) +
+                                          '...'
+                                      : widget.parentGoal!.title,
                                   style: TextStyle(
                                     fontSize: 14,
                                     color: Colors.black.withOpacity(0.5),
@@ -1254,260 +1235,202 @@ class GoalPageState extends State<GoalPage> {
                     ],
                   ),
                 ),
-                // 内容区域
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // 标题前添加必填标识
-                      Row(
-                        children: [
-                          const Text(
-                            '*',
-                            style: TextStyle(
-                              color: Colors.red,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                // 内容区域 - 使用SingleChildScrollView
+                SingleChildScrollView(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 目标标题标签(必填)
+                        Row(
+                          children: [
+                            const Text(
+                              '*',
+                              style: TextStyle(
+                                color: Colors.red,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '目标标题',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.black.withOpacity(0.6),
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      // 目标标题输入
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Colors.grey[50],
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: TextField(
-                          controller: titleController,
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.black.withOpacity(0.8),
-                          ),
-                          decoration: InputDecoration(
-                            hintText: '输入目标标题',
-                            hintStyle: TextStyle(
-                              color: Colors.black.withOpacity(0.3),
-                            ),
-                            border: InputBorder.none,
-                            contentPadding:
-                                const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      // 描述标签(非必填)
-                      Text(
-                        '目标描述',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.black.withOpacity(0.6),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      // 目标描述输入
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Colors.grey[50],
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: TextField(
-                          controller: descriptionController,
-                          maxLines: 3,
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.black.withOpacity(0.8),
-                          ),
-                          decoration: InputDecoration(
-                            hintText: '输入目标描述',
-                            hintStyle: TextStyle(
-                              color: Colors.black.withOpacity(0.3),
-                            ),
-                            border: InputBorder.none,
-                            contentPadding:
-                                const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      // 日期选择和图片选择标签行
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              '目标截止日期',
+                            const SizedBox(width: 4),
+                            Text(
+                              '目标标题',
                               style: TextStyle(
                                 fontSize: 14,
                                 color: Colors.black.withOpacity(0.6),
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        // 目标标题输入
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.grey[50],
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Row(
-                              children: [
-                                const Text(
-                                  '*',
-                                  style: TextStyle(
-                                    color: Colors.red,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '目标配图',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.black.withOpacity(0.6),
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: TextField(
+                            controller: titleController,
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.black.withOpacity(0.8),
+                            ),
+                            decoration: InputDecoration(
+                              hintText: '输入目标标题',
+                              hintStyle: TextStyle(
+                                color: Colors.black.withOpacity(0.3),
+                              ),
+                              border: InputBorder.none,
+                              contentPadding:
+                                  const EdgeInsets.symmetric(vertical: 12),
                             ),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      // 日期选择和图片选择
-                      Row(
-                        children: [
-                          // 日期选择按钮
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: () async {
-                                // 使用自定义日期选择器替代Flutter自带的showDatePicker
-                                DateTime? picked = await _showCustomDatePicker(
+                        ),
+                        const SizedBox(height: 16),
+                        // 描述标签(非必填)
+                        Text(
+                          '目标描述',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.black.withOpacity(0.6),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        // 目标描述输入
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.grey[50],
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: TextField(
+                            controller: descriptionController,
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.black.withOpacity(0.8),
+                            ),
+                            maxLines: 3,
+                            decoration: InputDecoration(
+                              hintText: '输入目标描述',
+                              hintStyle: TextStyle(
+                                color: Colors.black.withOpacity(0.3),
+                              ),
+                              border: InputBorder.none,
+                              contentPadding:
+                                  const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        // 日期和图片选择器
+                        Row(
+                          children: [
+                            // 日期选择按钮
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () async {
+                                  // 显示日期选择器
+                                  final DateTime now = DateTime.now();
+                                  final DateTime? picked =
+                                      await _showCustomDatePicker(
                                     context,
-                                    selectedDate ?? DateTime.now(),
-                                    "选择目标截止日期");
-                                if (picked != null) {
-                                  // 使用StatefulBuilder的setState刷新弹窗UI
-                                  setDialogState(() {
-                                    selectedDate = picked;
-                                  });
-                                }
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 12,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey[50],
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.max,
-                                  children: [
-                                    Icon(
-                                      Icons.calendar_today,
-                                      size: 16,
-                                      color: Colors.black.withOpacity(0.6),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      selectedDate == null
-                                          ? '选择日期'
-                                          : DateFormat('yyyy-MM-dd')
-                                              .format(selectedDate!),
-                                      style: TextStyle(
-                                        fontSize: 14,
+                                    selectedDate ?? now,
+                                    '选择完成日期',
+                                  );
+                                  if (picked != null) {
+                                    setDialogState(() {
+                                      selectedDate = picked;
+                                    });
+                                  }
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[50],
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.max,
+                                    children: [
+                                      Icon(
+                                        Icons.calendar_today,
+                                        size: 16,
                                         color: Colors.black.withOpacity(0.6),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          // 图片选择按钮，修改为调用_showImagePickerForNewGoal
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: () {
-                                // 显示选择愿望配图弹窗
-                                _showImagePickerForNewGoal((selectedImagePath) {
-                                  // 使用StatefulBuilder的setState刷新弹窗UI
-                                  setDialogState(() {
-                                    imagePath = selectedImagePath;
-                                  });
-                                });
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 12,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey[50],
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.max,
-                                  children: [
-                                    imagePath == null
-                                        ? Icon(
-                                            Icons.image_outlined,
-                                            size: 16,
-                                            color:
-                                                Colors.black.withOpacity(0.6),
-                                          )
-                                        : ClipRRect(
-                                            borderRadius:
-                                                BorderRadius.circular(4),
-                                            child:
-                                                imagePath!.startsWith('assets/')
-                                                    ? Image.asset(
-                                                        imagePath!,
-                                                        width: 20,
-                                                        height: 20,
-                                                        fit: BoxFit.cover,
-                                                      )
-                                                    : Image.file(
-                                                        File(imagePath!),
-                                                        width: 20,
-                                                        height: 20,
-                                                        fit: BoxFit.cover,
-                                                      ),
-                                          ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        imagePath == null ? '选择图片' : '已选择图片',
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        selectedDate == null
+                                            ? '选择日期'
+                                            : DateFormat('yyyy-MM-dd')
+                                                .format(selectedDate!),
                                         style: TextStyle(
                                           fontSize: 14,
                                           color: Colors.black.withOpacity(0.6),
-                                          overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
+                            const SizedBox(width: 12),
+                            // 图片选择按钮，修改为调用_showImagePickerForNewGoal
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () {
+                                  // 显示选择愿望配图弹窗
+                                  _showImagePickerForNewGoal(
+                                      (selectedImagePath) {
+                                    // 使用StatefulBuilder的setState刷新弹窗UI
+                                    setDialogState(() {
+                                      imagePath = selectedImagePath;
+                                    });
+                                  });
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[50],
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.max,
+                                    children: [
+                                      Icon(
+                                        Icons.image,
+                                        size: 16,
+                                        color: Colors.black.withOpacity(0.6),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        imagePath == null ? '选择配图' : '已选择配图',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.black.withOpacity(0.6),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                // 底部按钮
                 Container(
                   margin: const EdgeInsets.all(24),
                   child: ElevatedButton(
@@ -1556,171 +1479,9 @@ class GoalPageState extends State<GoalPage> {
     );
   }
 
-  // 为新建目标显示图片选择器
-  Future<void> _showImagePickerForNewGoal(
-      Function(String) onImageSelected) async {
-    if (!mounted) return;
-
-    // 获取预置图片
-    final defaultImages = _getDefaultImages();
-
-    // 弹出图片选择对话框
-    await showDialog(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return Dialog(
-          backgroundColor: Colors.white,
-          elevation: 0,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(28),
-          ),
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // 标题栏
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        '选择愿望配图',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black.withOpacity(0.9),
-                          fontFamily: 'STZhongsong',
-                        ),
-                      ),
-                      IconButton(
-                        icon: Icon(
-                          Icons.close,
-                          color: Colors.black.withOpacity(0.6),
-                          size: 24,
-                        ),
-                        onPressed: () => Navigator.pop(dialogContext),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-                    ],
-                  ),
-                ),
-                // 内容区域 - 网格展示预置图片
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: GridView.builder(
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        childAspectRatio: 1.5,
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
-                      ),
-                      itemCount: defaultImages.length,
-                      itemBuilder: (context, index) {
-                        final imagePath = defaultImages[index];
-
-                        return GestureDetector(
-                          onTap: () {
-                            // 选择预置图片
-                            onImageSelected(imagePath);
-                            Navigator.pop(dialogContext);
-                          },
-                          child: Container(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.1),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                )
-                              ],
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  ColoredBox(color: Colors.grey.shade200),
-                                  Image.asset(
-                                    imagePath,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) {
-                                      print('图片加载错误: $imagePath, 错误: $error');
-                                      return Container(
-                                        color: Colors.grey[300],
-                                        child: const Center(
-                                          child: Icon(
-                                            Icons.image_not_supported,
-                                            color: Colors.grey,
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-                // 底部按钮 - 从本地相册选择
-                Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: ElevatedButton.icon(
-                    onPressed: () async {
-                      Navigator.pop(dialogContext);
-
-                      // 打开系统相册
-                      final ImagePicker picker = ImagePicker();
-                      try {
-                        final XFile? image =
-                            await picker.pickImage(source: ImageSource.gallery);
-                        if (image != null) {
-                          onImageSelected(image.path);
-                        }
-                      } catch (e) {
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('选择图片失败，请重试')),
-                        );
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.black,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    icon: const Icon(Icons.photo_library),
-                    label: const Text(
-                      '从相册选择',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        fontFamily: 'STZhongsong',
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
+  // 显示会员数量限制提示
+  void _showMembershipLimitPrompt() {
+    MembershipPromptDialog.showLimitPrompt(context);
   }
 
   // 添加自定义日期选择对话框方法
@@ -1848,15 +1609,53 @@ class GoalPageState extends State<GoalPage> {
     }
   }
 
-  // 添加登录页面的导航方法
+  // 导航到登录页面
   Future<void> _navigateToLogin(BuildContext context) async {
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const LoginPage()),
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Text('需要登录'),
+        content: const Text('请先登录账号后再创建新项目'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.black87,
+            ),
+            child: const Text('暂不登录'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context, true);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.black,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('去登录'),
+          ),
+        ],
+      ),
     );
 
     if (result == true) {
-      await _checkLoginStatus();
+      final loginResult = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(builder: (context) => const LoginPage()),
+      );
+
+      if (loginResult == true) {
+        // 登录成功，立即更新登录状态
+        print('用户登录成功，立即更新会员状态');
+        await _checkLoginStatus();
+        print('登录后会员状态更新为: $_membershipStatus');
+
+        // 强制刷新UI
+        setState(() {});
+      }
     }
   }
 
@@ -2006,135 +1805,170 @@ class GoalPageState extends State<GoalPage> {
     );
   }
 
-  // 修改删除目标的方法
-  Future<void> _deleteCurrentGoal() async {
-    final context = this.context;
+  // 切换倒计时显示
+  void _toggleCountdown() {
+    setState(() {
+      _showCountdown = !_showCountdown;
+    });
+  }
+
+  // 显示分享对话框
+  void _showShareDialog(Goal goal) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return ShareDialog(
+          title: goal.title,
+          backgroundImagePath: goal.imagePath,
+        );
+      },
+    );
+  }
+
+  /// 处理登出
+  Future<void> _handleLogout() async {
+    // 显示确认对话框
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('退出登录'),
+          content: const Text('确定要退出当前账号吗？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.black87, // 设置文字颜色为黑色
+              ),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: TextButton.styleFrom(
+                backgroundColor: Colors.black, // 按钮背景色
+                foregroundColor: Colors.white, // 文字颜色为白色
+              ),
+              child: const Text('确定'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldLogout == true) {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      await authService.logout();
+      await _checkLoginStatus();
+    }
+  }
+
+  /// 构建侧边栏
+  Widget _buildDrawer() {
+    final authService = Provider.of<AuthService>(context);
+    return Drawer(
+      child: Container(
+        color: Theme.of(context).colorScheme.surface,
+        child: SafeArea(
+          bottom: false,
+          child: GoalTreeView(
+            goals: allGoals,
+            onSearchTap: () {
+              showSearch(
+                context: context,
+                delegate: GoalSearchDelegate(goals),
+              );
+            },
+            onSyncTap: _handleSyncTap,
+            membershipStatus: _membershipStatus,
+            onDeleteGoal: _handleDeleteGoalFromTree,
+            onUpdateGoalStatus: _handleUpdateGoalStatusFromTree,
+            onGoalSelect: (goal) {
+              Navigator.pop(context); // 关闭抽屉
+              setState(() {
+                currentGoal = goal;
+                currentView = 0; // 切换到全屏视图
+              });
+            },
+            onSettingsTap: () {
+              // 导航到设置页面
+              Navigator.pop(context); // 先关闭抽屉
+              _navigateToSettings(context);
+            },
+            onLoginTap: () {
+              // 导航到登录页面，不显示对话框直接跳转
+              Navigator.pop(context); // 先关闭抽屉
+              // 直接跳转到登录页面
+              Navigator.push<bool>(
+                context,
+                MaterialPageRoute(builder: (context) => const LoginPage()),
+              ).then((result) async {
+                if (result == true) {
+                  // 登录成功，更新登录状态
+                  await _checkLoginStatus();
+                }
+              });
+            },
+            isLoggedIn: authService.isLoggedIn,
+            userAvatar: authService.avatarUrl,
+            onLogout: _handleLogout,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _toggleShowTime() {
+    setState(() {
+      _showTime = !_showTime;
+    });
+  }
+
+  void _toggleShowDescription() {
+    setState(() {
+      _showDescription = !_showDescription;
+    });
+  }
+
+  // 为新建目标显示图片选择器
+  Future<void> _showImagePickerForNewGoal(
+      Function(String) onImageSelected) async {
     if (!mounted) return;
 
-    await showDialog(
+    // 使用新的图片选择器组件
+    await ImagePickerDialog.show(
       context: context,
-      builder: (BuildContext dialogContext) {
-        return Dialog(
-          backgroundColor: Colors.white,
-          elevation: 0,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 20),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(28),
-          ),
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // 标题栏
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        '删除目标',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black.withOpacity(0.9),
-                        ),
-                      ),
-                      IconButton(
-                        icon: Icon(
-                          Icons.close,
-                          color: Colors.black.withOpacity(0.6),
-                          size: 24,
-                        ),
-                        onPressed: () => Navigator.pop(dialogContext),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-                    ],
-                  ),
-                ),
-                // 内容区域
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                  child: Column(
-                    children: [
-                      Text(
-                        '确定要删除这个目标吗？',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.black.withOpacity(0.8),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '删除后将无法恢复',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.black.withOpacity(0.5),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      // 按钮区域
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextButton(
-                              onPressed: () => Navigator.pop(dialogContext),
-                              style: TextButton.styleFrom(
-                                foregroundColor: Colors.black,
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 12),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(24),
-                                ),
-                              ),
-                              child: const Text(
-                                '取消',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: ElevatedButton(
-                              onPressed: () {
-                                Navigator.pop(dialogContext);
-                                if (currentGoal != null) {
-                                  _deleteGoal(currentGoal!);
-                                }
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.red,
-                                foregroundColor: Colors.white,
-                                elevation: 0,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(24),
-                                ),
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 12),
-                              ),
-                              child: const Text(
-                                '删除',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
+      membershipStatus: _membershipStatus,
+      onImageSelected: onImageSelected,
+      onMembershipPrompt: () {
+        // 显示会员提示
+        MembershipPromptDialog.showImagePrompt(context);
+      },
+    );
+  }
+
+  // 也需要更新现有目标的图片选择器功能
+  Future<void> _showImagePicker() async {
+    if (!mounted) return;
+
+    // 使用新的图片选择器组件
+    await ImagePickerDialog.show(
+      context: context,
+      membershipStatus: _membershipStatus,
+      onImageSelected: (imagePath) async {
+        // 更新当前目标的图片
+        final updatedGoal = currentGoal!.copyWith(
+          imagePath: imagePath,
         );
+        await _updateGoal(updatedGoal);
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已更新图片')),
+        );
+      },
+      onMembershipPrompt: () {
+        // 显示会员提示
+        MembershipPromptDialog.showImagePrompt(context);
       },
     );
   }
@@ -2206,113 +2040,5 @@ class GoalPageState extends State<GoalPage> {
         SnackBar(content: Text('同步失败: $e')),
       );
     }
-  }
-
-  // 切换倒计时显示
-  void _toggleCountdown() {
-    setState(() {
-      _showCountdown = !_showCountdown;
-    });
-  }
-
-  // 显示分享对话框
-  void _showShareDialog(Goal goal) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return ShareDialog(
-          title: goal.title,
-          backgroundImagePath: goal.imagePath,
-        );
-      },
-    );
-  }
-
-  /// 处理登出
-  Future<void> _handleLogout() async {
-    // 显示确认对话框
-    final shouldLogout = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('退出登录'),
-          content: const Text('确定要退出当前账号吗？'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('确定'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (shouldLogout == true) {
-      final authService = Provider.of<AuthService>(context, listen: false);
-      await authService.logout();
-      await _checkLoginStatus();
-    }
-  }
-
-  /// 构建侧边栏
-  Widget _buildDrawer() {
-    final authService = Provider.of<AuthService>(context);
-    return Drawer(
-      child: Container(
-        color: Theme.of(context).colorScheme.surface,
-        child: SafeArea(
-          bottom: false,
-          child: GoalTreeView(
-            goals: allGoals,
-            onSearchTap: () {
-              showSearch(
-                context: context,
-                delegate: GoalSearchDelegate(goals),
-              );
-            },
-            onSyncTap: _handleSyncTap,
-            membershipStatus: _membershipStatus,
-            onDeleteGoal: _handleDeleteGoalFromTree,
-            onUpdateGoalStatus: _handleUpdateGoalStatusFromTree,
-            onGoalSelect: (goal) {
-              Navigator.pop(context); // 关闭抽屉
-              setState(() {
-                currentGoal = goal;
-                currentView = 0; // 切换到全屏视图
-              });
-            },
-            onSettingsTap: () {
-              // 导航到设置页面
-              Navigator.pop(context); // 先关闭抽屉
-              _navigateToSettings(context);
-            },
-            onLoginTap: () {
-              // 导航到登录页面
-              Navigator.pop(context); // 先关闭抽屉
-              _navigateToLogin(context);
-            },
-            isLoggedIn: authService.isLoggedIn,
-            userAvatar: authService.avatarUrl,
-            onLogout: _handleLogout,
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _toggleShowTime() {
-    setState(() {
-      _showTime = !_showTime;
-    });
-  }
-
-  void _toggleShowDescription() {
-    setState(() {
-      _showDescription = !_showDescription;
-    });
   }
 }

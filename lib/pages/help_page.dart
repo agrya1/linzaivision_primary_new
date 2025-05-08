@@ -36,32 +36,76 @@ class _HelpPageState extends State<HelpPage> {
       items: [
         HelpItem(
             question: '如何创建新的愿望？',
-            answer: '在主界面点击右下角的"+"按钮，或者在时间轴和列表视图底部找到新增入口。'),
+            answer:
+                '在主界面点击右下角的"+"按钮可以创建新愿望。在时间轴和网格视图中，滚动到底部也能找到添加新愿望的入口。请注意，普通用户最多可创建3个主愿望，开通会员后可创建无限数量的愿望。'),
         HelpItem(
             question: '如何编辑愿望内容？',
-            answer: '点击愿望卡片进入详情页（暂未完全实现），或在列表视图中通过操作按钮编辑。'),
-        HelpItem(question: '如何添加子愿望？', answer: '在全屏视图下，点击右下角的子愿望入口按钮。'),
-        HelpItem(question: '如何删除愿望？', answer: '在列表视图中，点击愿望卡片右下角的操作按钮，选择删除。'),
+            answer:
+                '在全屏视图中，点击愿望标题可以直接编辑；点击描述文字可以编辑描述；点击背景图片可以更换愿望的背景图片。在时间轴视图中，可以通过长按日期来修改愿望的截止日期。'),
+        HelpItem(
+            question: '如何添加子愿望？',
+            answer:
+                '在全屏视图下，点击右侧的"拆解目标"按钮（图标显示为多个小方块的组合）可以进入子愿望管理页面。在该页面中，您可以添加、查看和管理子愿望，帮助您将大目标分解为可操作的小步骤。'),
+        HelpItem(
+            question: '如何更改愿望状态？',
+            answer:
+                '在全屏视图中，点击右上角的"更多"按钮，然后选择"更改状态"选项。您可以将愿望设置为"进行中"、"已完成"或"已放弃"三种状态。在时间轴和网格视图中，也可以通过操作菜单更改状态。'),
+        HelpItem(
+            question: '如何删除愿望？',
+            answer:
+                '在全屏视图中，点击右上角的"更多"按钮，然后选择"删除"选项。在时间轴和网格视图中，点击愿望卡片上的操作按钮也可以找到删除选项。删除操作无法撤销，请谨慎操作。'),
+        HelpItem(
+            question: '如何分享我的愿望？',
+            answer:
+                '在全屏视图中，点击右上角的"更多"按钮，然后选择"分享"选项。系统会生成一张精美的分享图片，您可以将其保存到本地或直接分享给朋友。'),
       ],
     ),
     HelpTopic(
-      title: '视图切换',
+      title: '视图切换与个性化',
       items: [
         HelpItem(
             question: '如何切换不同的愿望展示方式？',
-            answer: '点击主界面右上角的视图切换按钮，可以在全屏、时间轴、列表三种模式间循环切换。'),
-        HelpItem(question: '如何在全屏模式下切换愿望？', answer: '左右滑动屏幕，或者点击底部的指示器圆点。'),
+            answer:
+                '点击主界面右上角的视图切换按钮，可以在三种模式间循环切换：全屏视图（展示单个愿望的详细信息）、时间轴视图（按时间顺序排列所有愿望）和网格视图（以卡片形式展示所有愿望）。'),
+        HelpItem(
+            question: '如何在全屏模式下浏览不同愿望？',
+            answer: '在全屏视图中，左右滑动屏幕可以切换到下一个或上一个愿望。您也可以点击屏幕底部的指示器圆点直接跳转到特定的愿望。'),
+        HelpItem(
+            question: '如何显示或隐藏愿望的倒计时？',
+            answer: '在全屏视图中，点击右上角的"更多"按钮，然后选择"显示倒计时"或"隐藏倒计时"选项即可切换倒计时的显示状态。'),
+        HelpItem(
+            question: '如何自定义愿望的显示内容？',
+            answer:
+                '在全屏视图中，点击右上角的"更多"按钮，您可以选择显示/隐藏时间信息、显示/隐藏描述文字等选项，根据个人喜好自定义愿望的展示方式。'),
       ],
     ),
     HelpTopic(
-      title: '账户与同步',
+      title: '会员功能与数据同步',
       items: [
-        HelpItem(question: '如何登录账户？', answer: '在设置页面点击用户卡片区域，进入登录页面。'),
+        HelpItem(
+            question: '如何登录账户？',
+            answer:
+                '点击左上角菜单图标打开侧边栏，在侧边栏底部点击"登录"按钮，或者在设置页面中点击用户信息区域，都可以进入登录页面。目前支持手机验证码登录方式。'),
+        HelpItem(
+            question: '会员有哪些特权？',
+            answer:
+                '开通会员后，您将享有以下特权：1. 创建无限数量的主愿望（普通用户限3个）；2. 使用全部高级背景图片；3. 云端数据同步功能；4. 多设备数据互通；5. 数据定期备份；6. 优先体验新功能；7. 专属主题和图标等。'),
+        HelpItem(
+            question: '如何开通会员？',
+            answer:
+                '在侧边栏底部的同步按钮处，或在设置页面中点击"会员中心"，进入会员购买页面。您可以选择包月或包年的会员方案，支持多种支付方式。'),
         HelpItem(
             question: '数据同步是如何工作的？',
-            answer: '登录后，您的愿望数据可以同步到云端（Pro会员功能），确保数据安全并在多设备间访问。'),
+            answer:
+                '登录并开通会员后，您的愿望数据会自动同步到云端。点击侧边栏底部的同步按钮可以手动触发同步。同步功能确保您的数据安全，并可以在多个设备间无缝切换使用。'),
         HelpItem(
-            question: '如何成为Pro会员？', answer: '在设置页面点击"Pro会员"入口，查看会员权益并进行升级。'),
+            question: '如何在多个设备上使用？',
+            answer:
+                '在新设备上安装应用后，使用相同的账号登录，您的所有愿望数据将自动从云端同步到新设备。会员用户可享受多设备无缝切换的体验。'),
+        HelpItem(
+            question: '如果遇到问题怎么办？',
+            answer:
+                '如果您在使用过程中遇到任何问题，可以通过设置页面中的"反馈与建议"功能联系我们，或发送邮件至support@linzai.com。我们的支持团队会尽快为您解答。'),
       ],
     ),
   ];
@@ -69,7 +113,7 @@ class _HelpPageState extends State<HelpPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text(
           '使用帮助',
@@ -81,69 +125,91 @@ class _HelpPageState extends State<HelpPage> {
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: ExpansionPanelList(
-          elevation: 0, // 去掉默认阴影
-          expandedHeaderPadding: EdgeInsets.zero, // 去掉展开时的内边距
-          dividerColor: Colors.transparent, // 去掉分割线
-          expansionCallback: (int index, bool isExpanded) {
-            setState(() {
-              _helpTopics[index].isExpanded = !isExpanded;
-            });
-          },
-          children: _helpTopics.map<ExpansionPanel>((HelpTopic topic) {
-            return ExpansionPanel(
-              backgroundColor: Colors.transparent, // 使背景透明
-              canTapOnHeader: true, // 允许点击整个头部展开
-              headerBuilder: (BuildContext context, bool isExpanded) {
-                return Container(
-                  padding: const EdgeInsets.symmetric(
-                      vertical: 16.0, horizontal: 8.0),
-                  child: Text(
-                    topic.title,
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey[800],
-                    ),
-                  ),
-                );
-              },
-              body: Container(
-                color: Colors.white, // 内容区域使用白色背景
-                margin: const EdgeInsets.only(bottom: 16), // 增加卡片间距
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Column(
-                    children: topic.items.map((item) {
-                      return ListTile(
-                        title: Text(
-                          item.question,
+      body: ListView.builder(
+        itemCount: _helpTopics.length,
+        itemBuilder: (context, topicIndex) {
+          final topic = _helpTopics[topicIndex];
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 主题标题
+              InkWell(
+                onTap: () {
+                  setState(() {
+                    topic.isExpanded = !topic.isExpanded;
+                  });
+                },
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          topic.title,
                           style: const TextStyle(
-                            fontWeight: FontWeight.w500,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
-                          child: Text(
-                            item.answer,
-                            style: TextStyle(
-                              color: Colors.grey[700],
-                              height: 1.4,
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
+                      ),
+                      Icon(
+                        topic.isExpanded
+                            ? Icons.keyboard_arrow_up
+                            : Icons.keyboard_arrow_down,
+                        color: Colors.black54,
+                      )
+                    ],
                   ),
                 ),
               ),
-              isExpanded: topic.isExpanded,
-            );
-          }).toList(),
-        ),
+              // 主题内容
+              if (topic.isExpanded)
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: topic.items.length,
+                  itemBuilder: (context, itemIndex) {
+                    final item = topic.items[itemIndex];
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // 问题
+                          Text(
+                            item.question,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          // 答案
+                          Text(
+                            item.answer,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Colors.black87,
+                              height: 1.5,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              const Divider(height: 1),
+            ],
+          );
+        },
       ),
     );
   }

@@ -6,7 +6,6 @@ import 'pages/goal_page.dart';
 import 'package:linzaivision_primary/theme/app_theme.dart';
 import 'package:linzaivision_primary/services/auth_service.dart';
 import 'package:linzaivision_primary/services/api_service.dart';
-import 'package:linzaivision_primary/test/login_test_page.dart';
 
 Future<void> main() async {
   // 确保 Flutter 绑定初始化

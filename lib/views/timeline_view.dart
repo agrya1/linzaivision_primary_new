@@ -2,7 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:linzaivision_primary/models/goal.dart';
 import 'package:linzaivision_primary/widgets/common/goal_card.dart';
 import 'package:intl/intl.dart';
+import 'package:linzaivision_primary/widgets/pickers/image_picker_dialog.dart';
+import 'package:linzaivision_primary/widgets/pickers/membership_prompt_dialog.dart';
+import 'package:provider/provider.dart';
+import 'package:linzaivision_primary/services/auth_service.dart';
 import 'dart:math';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:path/path.dart';
 
@@ -361,11 +366,7 @@ class _TimelineViewState extends State<TimelineView> {
       descriptionController: descriptionController,
       selectedImagePath: selectedImagePath,
       selectedDate: selectedGoalDate, // 传递选择的日期
-      onImageSelected: (path) {
-        setState(() {
-          selectedImagePath = path;
-        });
-      },
+      onImageSelected: _onImageSelected,
       onSaveGoal: (title, description) {
         if (widget.onSaveNewGoal != null) {
           // 同时保存选定的日期，实现完整的数据流
@@ -742,6 +743,31 @@ class _TimelineViewState extends State<TimelineView> {
       // 例如：widget.onUpdateGoalDate(goal, date);
     });
   }
+
+  // 使用时间轴类需要的唯一的图片选择器方法
+  void _onImageSelected(String imagePath) {
+    setState(() {
+      selectedImagePath = imagePath;
+    });
+  }
+
+  // 打开图片选择器
+  void _openImagePicker(BuildContext context) async {
+    // 获取用户会员状态 - 从SharedPreferences获取
+    final prefs = await SharedPreferences.getInstance();
+    final membershipStatus = prefs.getInt('member_level') ?? 0;
+
+    // 使用新的图片选择器组件
+    await ImagePickerDialog.show(
+      context: context,
+      membershipStatus: membershipStatus,
+      onImageSelected: _onImageSelected,
+      onMembershipPrompt: () {
+        // 显示会员提示
+        MembershipPromptDialog.showImagePrompt(context);
+      },
+    );
+  }
 }
 
 // 添加一个自定义的年份选择器
@@ -955,7 +981,7 @@ class _AddCardWidgetState extends State<_AddCardWidget> {
                               fontWeight: FontWeight.w500,
                             ),
                             decoration: InputDecoration(
-                              hintText: '新建目标',
+                              hintText: '新建愿望',
                               hintStyle: TextStyle(
                                 color: widget.selectedImagePath != null
                                     ? Colors.white.withOpacity(0.7)
@@ -984,7 +1010,7 @@ class _AddCardWidgetState extends State<_AddCardWidget> {
                             },
                             child: Text(
                               widget.titleController.text.isEmpty
-                                  ? '新建目标'
+                                  ? '新建愿望'
                                   : widget.titleController.text,
                               style: TextStyle(
                                 fontSize: 20,
@@ -1048,7 +1074,7 @@ class _AddCardWidgetState extends State<_AddCardWidget> {
                             fontWeight: FontWeight.normal,
                           ),
                           decoration: InputDecoration(
-                            hintText: '输入目标描述',
+                            hintText: '输入愿望描述',
                             hintStyle: TextStyle(
                               color: widget.selectedImagePath != null
                                   ? Colors.white.withOpacity(0.7)
@@ -1072,7 +1098,7 @@ class _AddCardWidgetState extends State<_AddCardWidget> {
                       // 描述非编辑状态
                       : Text(
                           widget.descriptionController.text.isEmpty
-                              ? '输入目标描述'
+                              ? '输入愿望描述'
                               : widget.descriptionController.text,
                           style: TextStyle(
                             fontSize: 16,
@@ -1109,7 +1135,7 @@ class _AddCardWidgetState extends State<_AddCardWidget> {
                       ),
                       onPressed: () {
                         // 显示图片选择器
-                        _showSimpleImagePicker(context);
+                        _openImagePicker(context);
                       },
                       tooltip: '选择背景图片',
                     ),
@@ -1161,151 +1187,20 @@ class _AddCardWidgetState extends State<_AddCardWidget> {
     );
   }
 
-  // 简单的图片选择器
-  void _showSimpleImagePicker(BuildContext context) async {
-    // 用户提供的截图显示这是一个8张图片的网格
-    final defaultImages = [
-      'assets/images/default/default.jpg',
-      'assets/images/default/default2.jpg',
-      'assets/images/default/default3.jpg',
-      'assets/images/default/default4.png',
-      'assets/images/default/default5.png',
-      'assets/images/default/default6.png',
-      'assets/images/default/default7.png',
-      'assets/images/default/default8.png',
-    ];
+  void _openImagePicker(BuildContext context) async {
+    // 获取用户会员状态 - 从SharedPreferences获取
+    final prefs = await SharedPreferences.getInstance();
+    final membershipStatus = prefs.getInt('member_level') ?? 0;
 
-    await showDialog(
+    // 使用新的图片选择器组件
+    await ImagePickerDialog.show(
       context: context,
-      builder: (context) => Dialog(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(28),
-        ),
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // 标题栏
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      '选择愿望配图',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black.withOpacity(0.9),
-                        fontFamily: 'STZhongsong',
-                      ),
-                    ),
-                    IconButton(
-                      icon: Icon(
-                        Icons.close,
-                        color: Colors.black.withOpacity(0.6),
-                        size: 24,
-                      ),
-                      onPressed: () => Navigator.pop(context),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ],
-                ),
-              ),
-              // 内容区域 - 网格展示预置图片
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: GridView.builder(
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      childAspectRatio: 1.5,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                    ),
-                    itemCount: defaultImages.length,
-                    itemBuilder: (context, index) {
-                      final imagePath = defaultImages[index];
-
-                      return GestureDetector(
-                        onTap: () {
-                          widget.onImageSelected(imagePath);
-                          Navigator.pop(context);
-                        },
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              )
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Image.asset(
-                              imagePath,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                return Container(
-                                  color: Colors.grey[300],
-                                  child: const Center(
-                                    child: Icon(
-                                      Icons.image_not_supported,
-                                      color: Colors.grey,
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-              // 底部按钮 - 从本地相册选择
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    // 无法直接访问原有方法，此处保留按钮但不实现功能
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  icon: const Icon(Icons.photo_library),
-                  label: const Text(
-                    '从相册选择',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      fontFamily: 'STZhongsong',
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+      membershipStatus: membershipStatus,
+      onImageSelected: widget.onImageSelected,
+      onMembershipPrompt: () {
+        // 显示会员提示
+        MembershipPromptDialog.showImagePrompt(context);
+      },
     );
   }
 }

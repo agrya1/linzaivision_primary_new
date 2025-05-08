@@ -378,6 +378,9 @@ class SettingsPage extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.black87,
+            ),
             child: const Text('取消'),
           ),
           TextButton(
@@ -388,6 +391,10 @@ class SettingsPage extends StatelessWidget {
                 Navigator.pop(context);
               }
             },
+            style: TextButton.styleFrom(
+              backgroundColor: Colors.black,
+              foregroundColor: Colors.white,
+            ),
             child: const Text('确定'),
           ),
         ],

@@ -134,8 +134,8 @@ class _MembershipPageState extends State<MembershipPage> {
         _buildBenefitItem(Icons.cloud_queue, '云端数据同步'),
         _buildBenefitItem(Icons.devices, '多设备数据互通'),
         _buildBenefitItem(Icons.backup, '数据定期备份'),
+        _buildBenefitItem(Icons.palette, '专属愿景图片'),
         _buildBenefitItem(Icons.new_releases, '优先体验新功能'),
-        _buildBenefitItem(Icons.palette, '专属主题和图标'),
       ],
     );
   }
