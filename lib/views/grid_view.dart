@@ -23,7 +23,7 @@ class GoalGridView extends StatelessWidget {
     const maxWidth = 1200.0;
     final useWidth = screenWidth > maxWidth ? maxWidth : screenWidth;
     const margin = 24.0;
-    const gutter = 24.0;
+    const gutter = 16.0;
     final availableWidth = useWidth - (margin * 2);
     final crossAxisCount = (availableWidth / 300).floor().clamp(2, 4);
 
@@ -59,7 +59,7 @@ class GoalGridView extends StatelessWidget {
         ),
         child: const Center(
           child: Icon(
-            Icons.add_circle_outline,
+            Icons.add,
             size: 48,
             color: Colors.grey,
           ),
@@ -206,7 +206,7 @@ class GoalGridView extends StatelessWidget {
                       PopupMenuItem(
                         child: ListTile(
                           leading: const Icon(Icons.delete),
-                          title: const Text('删除目标'),
+                          title: const Text('删除'),
                           contentPadding: EdgeInsets.zero,
                           dense: true,
                           onTap: () {

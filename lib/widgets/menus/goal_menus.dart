@@ -53,7 +53,7 @@ class GoalOperationMenu extends StatelessWidget {
           PopupMenuItem(
             child: ListTile(
               leading: const Icon(Icons.delete),
-              title: const Text('删除目标'),
+              title: const Text('删除'),
               onTap: () {
                 Navigator.pop(context);
                 onDelete();
@@ -146,7 +146,7 @@ class GoalGridItemMenu extends StatelessWidget {
         PopupMenuItem(
           child: ListTile(
             leading: const Icon(Icons.delete),
-            title: const Text('删除目标'),
+            title: const Text('删除'),
             onTap: () {
               Navigator.pop(context);
               onDelete();

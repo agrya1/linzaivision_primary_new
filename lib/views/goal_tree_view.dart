@@ -177,9 +177,11 @@ class _GoalTreeViewState extends State<GoalTreeView> {
                                   image: NetworkImage(widget.userAvatar!),
                                   fit: BoxFit.cover,
                                 )
-                              : const DecorationImage(
-                                  image: AssetImage(
-                                      'assets/images/default_avatar.png'),
+                              : DecorationImage(
+                                  image: AssetImage(widget.isLoggedIn
+                                          ? 'assets/images/default_avatar.png' // 已登录默认头像
+                                          : 'assets/images/default_avatar_al.png' // 未登录默认头像
+                                      ),
                                   fit: BoxFit.cover,
                                 ),
                         ),
@@ -341,7 +343,7 @@ class _GoalTreeViewState extends State<GoalTreeView> {
                         builder: (BuildContext ctx) {
                           return AlertDialog(
                             title: const Text('确认删除'),
-                            content: Text('确定要删除目标 "${goal.title}" 及其所有子目标吗？'),
+                            content: Text('确定要删除条目 "${goal.title}" 及其所有子条目吗？'),
                             actions: <Widget>[
                               TextButton(
                                 child: const Text('取消'),

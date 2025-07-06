@@ -143,7 +143,7 @@ class GoalPageState extends State<GoalPage> {
               parentId: null, // 明确设置为根目标
             ),
             Goal(
-              title: '愿景二',
+              title: '让心愿被看见',
               description: '描述你的心愿',
               imagePath: 'assets/images/default/default2.jpg',
               createdTime:
@@ -290,7 +290,7 @@ class GoalPageState extends State<GoalPage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('删除目标失败: $e')),
+        SnackBar(content: Text('删除条目失败: $e')),
       );
     }
   }
@@ -338,7 +338,7 @@ class GoalPageState extends State<GoalPage> {
                     fontSize: 18,
                     color: currentView == 0 ? Colors.white : Colors.black,
                     fontWeight: FontWeight.w600,
-                    fontFamily: 'Songti',
+                    fontFamily: 'STZhongsong',
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -822,7 +822,7 @@ class GoalPageState extends State<GoalPage> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        '删除目标',
+                        '删除',
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.w600,
@@ -941,6 +941,7 @@ class GoalPageState extends State<GoalPage> {
     // 直接返回TimelineView组件
     return TimelineView(
       goals: goals,
+      isSubgoal: widget.parentGoal != null,
       onGoalSelect: (goal) {
         setState(() {
           currentGoal = goal;
@@ -1024,7 +1025,7 @@ class GoalPageState extends State<GoalPage> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        '删除目标',
+                        '删除',
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.w600,
@@ -1195,7 +1196,7 @@ class GoalPageState extends State<GoalPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            widget.parentGoal != null ? '新建子目标' : '新建目标',
+                            widget.parentGoal != null ? '新建子条目' : '新建条目',
                             style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.w600,
@@ -1256,7 +1257,7 @@ class GoalPageState extends State<GoalPage> {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              '目标标题',
+                              '标题',
                               style: TextStyle(
                                 fontSize: 14,
                                 color: Colors.black.withOpacity(0.6),
@@ -1280,7 +1281,7 @@ class GoalPageState extends State<GoalPage> {
                               color: Colors.black.withOpacity(0.8),
                             ),
                             decoration: InputDecoration(
-                              hintText: '输入目标标题',
+                              hintText: '输入标题',
                               hintStyle: TextStyle(
                                 color: Colors.black.withOpacity(0.3),
                               ),
@@ -1293,7 +1294,7 @@ class GoalPageState extends State<GoalPage> {
                         const SizedBox(height: 16),
                         // 描述标签(非必填)
                         Text(
-                          '目标描述',
+                          '描述',
                           style: TextStyle(
                             fontSize: 14,
                             color: Colors.black.withOpacity(0.6),
@@ -1316,7 +1317,7 @@ class GoalPageState extends State<GoalPage> {
                             ),
                             maxLines: 3,
                             decoration: InputDecoration(
-                              hintText: '输入目标描述',
+                              hintText: '输入描述',
                               hintStyle: TextStyle(
                                 color: Colors.black.withOpacity(0.3),
                               ),
@@ -1386,7 +1387,7 @@ class GoalPageState extends State<GoalPage> {
                             Expanded(
                               child: GestureDetector(
                                 onTap: () {
-                                  // 显示选择愿望配图弹窗
+                                  // 显示选择配图弹窗
                                   _showImagePickerForNewGoal(
                                       (selectedImagePath) {
                                     // 使用StatefulBuilder的setState刷新弹窗UI
@@ -1449,7 +1450,7 @@ class GoalPageState extends State<GoalPage> {
                         // 先关闭弹窗
                         Navigator.pop(context);
 
-                        // 添加新目标
+                        // 添加新条目
                         _addNewGoal(newGoal);
                       }
                     },
@@ -1463,7 +1464,7 @@ class GoalPageState extends State<GoalPage> {
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                     child: Text(
-                      widget.parentGoal != null ? '创建子目标' : '创建目标',
+                      widget.parentGoal != null ? '创建子条目' : '创建条目',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,

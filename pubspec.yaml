@@ -19,14 +19,16 @@ dependencies:
   path: ^1.8.3
   sqflite_common_ffi: ^2.3.2+1
   flutter_slidable: ^4.0.0
-  image_gallery_saver: ^2.0.3
-  # 阿里云一键登录SDK - 使用flutter_ali_auth替代旧版ali_auth
-  flutter_ali_auth:
-    path: ./plugins/flutter_ali_auth
+  #image_gallery_saver: ^2.0.3
+  # 阿里云一键登录SDK - 已移除，仅使用验证码登录
+  # flutter_ali_auth:
+  #   path: ./plugins/flutter_ali_auth
   # 持久化存储用户登录信息
   shared_preferences: ^2.2.2
   # 用于打开外部链接
   url_launcher: ^6.2.4
+  flutter_native_splash: ^2.4.0
+  # media_scanner_scan_file: ^0.0.3
   
 dev_dependencies:
   flutter_test:
@@ -34,7 +36,7 @@ dev_dependencies:
   flutter_lints: ^5.0.0
   mockito: ^5.4.4
   build_runner: ^2.4.8
-  flutter_launcher_icons: ^0.13.1
+  flutter_launcher_icons: ^0.14.3
 
 flutter_icons:
   android: true

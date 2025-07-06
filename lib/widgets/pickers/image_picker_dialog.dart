@@ -82,7 +82,7 @@ class ImagePickerDialog extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    '选择愿望配图',
+                    '选择配图',
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w600,

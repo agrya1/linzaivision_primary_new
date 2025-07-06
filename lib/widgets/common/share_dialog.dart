@@ -4,7 +4,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:screenshot/screenshot.dart';
-import 'package:image_gallery_saver/image_gallery_saver.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
 
 class ShareDialog extends StatefulWidget {
   final String title;
@@ -37,24 +38,33 @@ class _ShareDialogState extends State<ShareDialog> {
       );
 
       if (imageBytes != null) {
-        // 保存到相册
-        final result = await ImageGallerySaver.saveImage(
-          imageBytes,
-          name: 'share_${DateTime.now().millisecondsSinceEpoch}',
-          quality: 100,
-        );
+        try {
+          // 使用应用文档目录
+          final docDir = await getApplicationDocumentsDirectory();
+          final fileName = 'share_${DateTime.now().millisecondsSinceEpoch}.png';
+          final filePath = path.join(docDir.path, fileName);
 
-        if (!mounted) return;
+          // 保存图片
+          final file = File(filePath);
+          await file.writeAsBytes(imageBytes);
 
-        if (result['isSuccess']) {
-          // 显示成功提示
+          print('图片已保存到: $filePath');
+
+          if (!mounted) return;
+
+          // 显示成功提示，包含保存路径
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('图片已保存到相册')),
+            SnackBar(
+              content: Text('图片已保存到文件: $fileName'),
+              duration: const Duration(seconds: 3),
+            ),
           );
+
           // 关闭对话框
           Navigator.of(context).pop();
-        } else {
-          throw Exception('保存失败');
+        } catch (e) {
+          print('保存失败: $e');
+          throw Exception('无法保存图片: $e');
         }
       }
     } catch (e) {

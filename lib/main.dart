@@ -47,7 +47,7 @@ class MyApp extends StatelessWidget {
         ),
       ],
       child: MaterialApp(
-        title: 'LinzaiVision',
+        title: '临在意识',
         theme: AppTheme.createTheme(),
         home: const MyHomePage(),
       ),

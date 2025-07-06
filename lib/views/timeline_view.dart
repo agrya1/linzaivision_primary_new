@@ -19,6 +19,7 @@ class TimelineView extends StatefulWidget {
   final Function(String title, String description, String? imagePath,
       DateTime? targetDate)? onSaveNewGoal;
   final Future<bool> Function(Goal, DateTime?)? onUpdateGoalDate;
+  final bool isSubgoal;
 
   const TimelineView({
     super.key,
@@ -28,6 +29,7 @@ class TimelineView extends StatefulWidget {
     this.onStatusChange,
     this.onSaveNewGoal,
     this.onUpdateGoalDate,
+    this.isSubgoal = false,
   });
 
   @override
@@ -367,6 +369,7 @@ class _TimelineViewState extends State<TimelineView> {
       selectedImagePath: selectedImagePath,
       selectedDate: selectedGoalDate, // 传递选择的日期
       onImageSelected: _onImageSelected,
+      isSubgoal: widget.isSubgoal, // 传递isSubgoal属性
       onSaveGoal: (title, description) {
         if (widget.onSaveNewGoal != null) {
           // 同时保存选定的日期，实现完整的数据流
@@ -893,6 +896,7 @@ class _AddCardWidget extends StatefulWidget {
   final DateTime? selectedDate; // 添加日期字段
   final Function(String) onImageSelected;
   final Function(String, String) onSaveGoal;
+  final bool isSubgoal;
 
   const _AddCardWidget({
     required this.titleController,
@@ -901,6 +905,7 @@ class _AddCardWidget extends StatefulWidget {
     this.selectedDate, // 日期可为空
     required this.onImageSelected,
     required this.onSaveGoal,
+    required this.isSubgoal,
   });
 
   @override
@@ -981,7 +986,7 @@ class _AddCardWidgetState extends State<_AddCardWidget> {
                               fontWeight: FontWeight.w500,
                             ),
                             decoration: InputDecoration(
-                              hintText: '新建愿望',
+                              hintText: widget.isSubgoal ? '新建子条目' : '新建条目',
                               hintStyle: TextStyle(
                                 color: widget.selectedImagePath != null
                                     ? Colors.white.withOpacity(0.7)
@@ -1010,7 +1015,9 @@ class _AddCardWidgetState extends State<_AddCardWidget> {
                             },
                             child: Text(
                               widget.titleController.text.isEmpty
-                                  ? '新建愿望'
+                                  ? widget.isSubgoal
+                                      ? '新建子条目'
+                                      : '新建条目'
                                   : widget.titleController.text,
                               style: TextStyle(
                                 fontSize: 20,
@@ -1074,7 +1081,7 @@ class _AddCardWidgetState extends State<_AddCardWidget> {
                             fontWeight: FontWeight.normal,
                           ),
                           decoration: InputDecoration(
-                            hintText: '输入愿望描述',
+                            hintText: '输入描述',
                             hintStyle: TextStyle(
                               color: widget.selectedImagePath != null
                                   ? Colors.white.withOpacity(0.7)
@@ -1098,7 +1105,7 @@ class _AddCardWidgetState extends State<_AddCardWidget> {
                       // 描述非编辑状态
                       : Text(
                           widget.descriptionController.text.isEmpty
-                              ? '输入愿望描述'
+                              ? '输入描述'
                               : widget.descriptionController.text,
                           style: TextStyle(
                             fontSize: 16,
@@ -1179,7 +1186,7 @@ class _AddCardWidgetState extends State<_AddCardWidget> {
                     isDescriptionEditing = false;
                   });
                 },
-                tooltip: '保存愿望',
+                tooltip: '保存',
               ),
             ),
           ),
