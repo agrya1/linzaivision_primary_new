@@ -162,6 +162,15 @@ class GoalCard extends StatelessWidget {
     const String defaultImagePath = 'assets/images/default/default.jpg';
 
     try {
+      // 如果目标有视频，使用默认图片而不是尝试加载视频文件
+      if (goal.hasVideo && goal.videoPath != null) {
+        print('目标有视频，使用默认图片: $defaultImagePath');
+        return const DecorationImage(
+          image: AssetImage(defaultImagePath),
+          fit: BoxFit.cover,
+        );
+      }
+
       if (goal.imagePath.isEmpty) {
         print('警告: goal.imagePath为空');
         return const DecorationImage(
@@ -180,6 +189,20 @@ class GoalCard extends StatelessWidget {
           },
         );
       } else {
+        // 检查文件扩展名，避免加载视频文件
+        final lowerPath = goal.imagePath.toLowerCase();
+        if (lowerPath.endsWith('.mp4') ||
+            lowerPath.endsWith('.mov') ||
+            lowerPath.endsWith('.avi') ||
+            lowerPath.endsWith('.wmv') ||
+            lowerPath.endsWith('.mkv')) {
+          print('检测到视频文件，使用默认图片: ${goal.imagePath}');
+          return const DecorationImage(
+            image: AssetImage(defaultImagePath),
+            fit: BoxFit.cover,
+          );
+        }
+
         print('加载文件图片: ${goal.imagePath}');
         final file = File(goal.imagePath);
         final exists = file.existsSync();

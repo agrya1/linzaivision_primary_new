@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 
 class ImagePickerDialog extends StatelessWidget {
   final int membershipStatus; // 0-未登录，1-普通用户，2-会员用户
-  final Function(String imagePath) onImageSelected;
+  final Function(String imagePath, {bool isVideo}) onImageSelected;
   final VoidCallback onMembershipPrompt; // 当选择会员图片但用户不是会员时的回调
 
   const ImagePickerDialog({
@@ -82,7 +83,7 @@ class ImagePickerDialog extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    '选择配图',
+                    '选择背景',
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w600,
@@ -130,7 +131,7 @@ class ImagePickerDialog extends StatelessWidget {
                           onMembershipPrompt();
                         } else {
                           // 普通图片或用户是会员，直接选择
-                          onImageSelected(imagePath);
+                          onImageSelected(imagePath, isVideo: false);
                           Navigator.pop(context);
                         }
                       },
@@ -181,15 +182,60 @@ class ImagePickerDialog extends StatelessWidget {
                   // 打开系统相册
                   final ImagePicker picker = ImagePicker();
                   try {
-                    final XFile? image =
-                        await picker.pickImage(source: ImageSource.gallery);
-                    if (image != null) {
-                      onImageSelected(image.path);
-                    }
+                    // 显示选择对话框
+                    showDialog(
+                      context: context,
+                      builder: (BuildContext context) {
+                        return SimpleDialog(
+                          title: const Text('选择媒体类型'),
+                          children: <Widget>[
+                            SimpleDialogOption(
+                              onPressed: () async {
+                                Navigator.pop(context);
+                                final XFile? image = await picker.pickImage(
+                                    source: ImageSource.gallery);
+                                if (image != null) {
+                                  onImageSelected(image.path, isVideo: false);
+                                }
+                              },
+                              child: const Text('选择图片'),
+                            ),
+                            SimpleDialogOption(
+                              onPressed: () async {
+                                Navigator.pop(context);
+                                final XFile? video = await picker.pickVideo(
+                                    source: ImageSource.gallery);
+                                if (video != null) {
+                                  // 验证视频文件是否存在
+                                  final File videoFile = File(video.path);
+                                  print('选择的视频文件路径: ${video.path}');
+
+                                  if (await videoFile.exists()) {
+                                    print(
+                                        '视频文件存在，大小: ${await videoFile.length()} 字节');
+                                    onImageSelected(video.path, isVideo: true);
+                                  } else {
+                                    print('错误: 视频文件不存在: ${video.path}');
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        const SnackBar(
+                                            content: Text('无法访问选择的视频文件')),
+                                      );
+                                    }
+                                  }
+                                }
+                              },
+                              child: const Text('选择视频'),
+                            ),
+                          ],
+                        );
+                      },
+                    );
                   } catch (e) {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('选择图片失败，请重试')),
+                        const SnackBar(content: Text('选择媒体文件失败，请重试')),
                       );
                     }
                   }
@@ -224,14 +270,15 @@ class ImagePickerDialog extends StatelessWidget {
   static Future<void> show({
     required BuildContext context,
     required int membershipStatus,
-    required Function(String) onImageSelected,
+    required Function(String imagePath, {bool isVideo}) onImageSelected,
     required VoidCallback onMembershipPrompt,
   }) async {
     await showDialog(
       context: context,
       builder: (BuildContext context) => ImagePickerDialog(
         membershipStatus: membershipStatus,
-        onImageSelected: onImageSelected,
+        onImageSelected: (path, {isVideo = false}) =>
+            onImageSelected(path, isVideo: isVideo),
         onMembershipPrompt: onMembershipPrompt,
       ),
     );

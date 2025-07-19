@@ -8,6 +8,7 @@ import 'package:linzaivision_primary/views/full_screen_view.dart';
 import 'package:linzaivision_primary/views/grid_view.dart';
 import 'package:linzaivision_primary/views/timeline_view.dart';
 import 'package:linzaivision_primary/views/goal_tree_view.dart';
+import 'package:linzaivision_primary/views/explore_view.dart';
 import 'package:linzaivision_primary/widgets/status/goal_status_widget.dart';
 import 'package:linzaivision_primary/widgets/menus/goal_menus.dart';
 import 'package:linzaivision_primary/database/database_helper.dart';
@@ -61,6 +62,9 @@ class GoalPageState extends State<GoalPage> {
   // 添加描述显示状态变量:
   bool _showDescription = true; // 默认显示描述
 
+  // 添加标题显示状态变量
+  bool _showTitle = true;
+
   @override
   void initState() {
     super.initState();
@@ -91,6 +95,16 @@ class GoalPageState extends State<GoalPage> {
           setState(() {
             currentView = 1;
           });
+        }
+      });
+    } else {
+      // 为根页面添加延迟检查树视图数据的回调
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        // 延迟2秒确保初始化完成
+        await Future.delayed(const Duration(seconds: 2));
+        if (mounted && allGoals.isEmpty) {
+          print('检测到树视图数据为空，尝试重新加载');
+          await _refreshGoalTree();
         }
       });
     }
@@ -131,38 +145,70 @@ class GoalPageState extends State<GoalPage> {
       final loadedGoals =
           await _dbHelper.getGoals(parentId: widget.parentGoal?.id);
 
-      setState(() {
-        // 如果是根页面(不是子目标页面)且数据库中没有数据，使用示例数据
-        if (loadedGoals.isEmpty && widget.parentGoal == null) {
+      // 如果是根页面(不是子目标页面)且数据库中没有数据，使用示例数据
+      if (loadedGoals.isEmpty && widget.parentGoal == null) {
+        setState(() {
           goals = [
             Goal(
-              title: '开启21天显化之旅',
+              title: '让心愿可以被看见',
               description: '描述你的心愿',
               imagePath: 'assets/images/default/default.jpg',
               createdTime: DateTime.now(),
               parentId: null, // 明确设置为根目标
+              subGoals: [
+                Goal(
+                  title: '让目标可以被拆解',
+                  description: '描述你的目标',
+                  imagePath: 'assets/images/default/default.jpg',
+                  createdTime: DateTime.now().add(const Duration(seconds: 2)),
+                  // 父目标ID会在保存时设置
+                ),
+              ],
             ),
             Goal(
-              title: '让心愿被看见',
-              description: '描述你的心愿',
+              title: '让梦想可以被管理',
+              description: '描述你的梦想',
               imagePath: 'assets/images/default/default2.jpg',
               createdTime:
                   DateTime.now().add(const Duration(seconds: 1)), // 确保创建时间不同
               parentId: null, // 明确设置为根目标
             ),
+            Goal(
+              title: '让意识开始被观测',
+              description: '描述你的意识',
+              imagePath: 'assets/images/default/default3.jpg',
+              createdTime:
+                  DateTime.now().add(const Duration(seconds: 1)), // 确保创建时间不同
+              parentId: null, // 明确设置为根目标
+            ),
           ];
-          // 保存示例数据到数据库
-          _saveInitialGoals();
-        } else {
+        });
+
+        // 等待保存初始数据完成
+        await _saveInitialGoals();
+
+        // 重新从数据库加载数据以确保数据完整
+        final reloadedGoals =
+            await _dbHelper.getGoals(parentId: widget.parentGoal?.id);
+        setState(() {
+          goals = reloadedGoals;
+          if (goals.isNotEmpty && currentGoal == null) {
+            currentGoal = goals[0];
+          }
+          _isLoading = false;
+        });
+
+        // 刷新目标树
+        await _refreshGoalTree();
+      } else {
+        setState(() {
           goals = loadedGoals;
-        }
-
-        if (goals.isNotEmpty && currentGoal == null) {
-          currentGoal = goals[0]; // 默认选择第一个目标(最新创建的)
-        }
-
-        _isLoading = false;
-      });
+          if (goals.isNotEmpty && currentGoal == null) {
+            currentGoal = goals[0];
+          }
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       setState(() {
         _error = '加载数据失败: $e';
@@ -173,42 +219,104 @@ class GoalPageState extends State<GoalPage> {
 
   // 保存示例数据到数据库
   Future<void> _saveInitialGoals() async {
-    for (var goal in goals) {
-      final id = await _dbHelper.insertGoal(goal);
-      goal.id = id; // 保存数据库生成的ID
+    print('开始保存初始数据到数据库');
+
+    try {
+      // 使用批量插入事务提高性能
+      await _dbHelper.batchInsertGoalTree(goals);
+
+      print('初始数据保存完成');
+    } catch (e) {
+      print('保存初始数据出错: $e');
+
+      // 如果批量插入失败，回退到单个保存方式
+      print('尝试使用单个保存方式...');
+
+      // 创建一个列表存储所有保存操作的Future
+      List<Future> saveFutures = [];
+
+      for (var goal in goals) {
+        // 先保存父目标
+        print('保存父目标: ${goal.title}');
+        final Future<int> idFuture = _dbHelper.insertGoal(goal);
+
+        // 添加处理完成后设置ID的回调
+        final parentFuture = idFuture.then((id) {
+          goal.id = id; // 保存数据库生成的ID
+          print('父目标ID: ${goal.id}');
+
+          // 保存子目标并设置父子关系
+          List<Future> subFutures = [];
+          if (goal.subGoals.isNotEmpty) {
+            print('保存子目标，数量: ${goal.subGoals.length}');
+            for (var subGoal in goal.subGoals) {
+              subGoal.parentId = goal.id; // 设置父目标ID
+              print('设置子目标父ID: ${subGoal.title} -> 父ID: ${subGoal.parentId}');
+              final subFuture = _dbHelper.insertGoal(subGoal).then((subId) {
+                subGoal.id = subId;
+                print('子目标已保存，ID: ${subGoal.id}');
+              });
+              subFutures.add(subFuture);
+            }
+          }
+          return Future.wait(subFutures);
+        });
+
+        saveFutures.add(parentFuture);
+      }
+
+      // 等待所有保存操作完成
+      await Future.wait(saveFutures);
+      print('初始数据保存完成（单个保存方式）');
     }
   }
 
   /// 刷新目标树
   Future<void> _refreshGoalTree() async {
     try {
+      setState(() {
+        _isLoading = true; // 显示加载状态
+      });
+
       // 始终加载全量目标树
       allGoals = await _dbHelper.getGoalTree();
-      if (widget.parentGoal == null) {
-        // 根页面goals为全量树
+
+      // 调试输出目标树结构
+      print(
+          '目标树结构：${allGoals.map((g) => '${g.id}:${g.title} (子项:${g.subGoals.length})').join(', ')}');
+
+      if (mounted) {
         setState(() {
-          goals = allGoals;
+          if (widget.parentGoal == null) {
+            // 根页面goals为顶级目标
+            goals = allGoals;
+          } else {
+            // 查找当前父目标的子目标
+            final parentGoal = allGoals.firstWhere(
+              (g) => g.id == widget.parentGoal!.id,
+              orElse: () => widget.parentGoal!,
+            );
+            goals = parentGoal.subGoals;
+          }
+
           if (goals.isNotEmpty && currentGoal == null) {
             currentGoal = goals[0];
           }
-        });
-      } else {
-        // 子页面goals为当前父目标下的子目标
-        final subGoals =
-            await _dbHelper.getGoals(parentId: widget.parentGoal!.id);
-        setState(() {
-          goals = subGoals;
-          if (goals.isNotEmpty && currentGoal == null) {
-            currentGoal = goals[0];
-          }
+
+          _isLoading = false;
         });
       }
     } catch (e) {
       print('_refreshGoalTree出错: $e');
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('刷新数据失败: $e')),
-      );
+      if (mounted) {
+        setState(() {
+          _error = '加载数据失败: $e';
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('刷新数据失败: $e')),
+        );
+      }
     }
   }
 
@@ -243,6 +351,15 @@ class GoalPageState extends State<GoalPage> {
   /// 更新目标
   Future<void> _updateGoal(Goal goal) async {
     try {
+      // 检查视频路径
+      if (goal.hasVideo && goal.videoPath != null) {
+        print('更新目标: 视频文件路径检查 ${goal.videoPath}');
+        final videoFile = File(goal.videoPath!);
+        if (!videoFile.existsSync()) {
+          print('警告: 视频文件不存在 ${goal.videoPath}');
+        }
+      }
+
       // 更新数据库
       await _dbHelper.updateGoal(goal);
 
@@ -363,7 +480,7 @@ class GoalPageState extends State<GoalPage> {
             onPressed: _onChangeView,
           ),
           // 只在全屏视图下显示更多按钮
-          if (currentView == 0)
+          if (currentView == 0 && currentGoal != null)
             GoalOperationMenu(
               currentGoal: currentGoal,
               onStatusChange: () {
@@ -384,6 +501,26 @@ class GoalPageState extends State<GoalPage> {
               showTime: _showTime,
               onToggleDescription: _toggleShowDescription,
               showDescription: _showDescription,
+              onToggleTitle: () {
+                setState(() {
+                  _showTitle = !_showTitle;
+                });
+              },
+              showTitle: _showTitle,
+              onToggleDeadline: () {
+                if (currentGoal != null) {
+                  _toggleDeadline(currentGoal!);
+                }
+              },
+              onAddSubGoal: () {
+                _addSubGoalFromFullScreen();
+              },
+              onToggleCustomCountdown: () {
+                if (currentGoal != null) {
+                  _showCustomCountdownDialog();
+                }
+              },
+              hasCustomCountdown: currentGoal?.hasCustomCountdown ?? false,
             ),
         ],
       ),
@@ -447,205 +584,45 @@ class GoalPageState extends State<GoalPage> {
 
   // 全屏视图
   Widget _buildFullScreenView() {
-    if (goals.isEmpty) {
-      return FullScreenView(
-        currentGoal: null,
-        goals: goals,
-        isEditingTitle: _isEditingTitle,
-        titleController: _titleController,
-        onTitleEdit: _startTitleEdit,
-        onTitleSave: _saveTitle,
-        onDescriptionEdit: _showDescriptionDialog,
-        onImagePick: _showImagePicker,
-        onAddGoal: _showAddGoalDialog,
-        onGoalSelect: (goal) {
-          setState(() {
-            currentGoal = goal;
-          });
-        },
-        onSaveDescription: (goal, description) async {
-          try {
-            // 创建一个更新了描述的新目标对象
-            final updatedGoal = goal.copyWith(description: description);
-
-            // 更新到数据库并刷新UI
-            await _updateGoal(updatedGoal);
-
-            // 显示保存成功消息
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('目标描述已更新'),
-                  duration: const Duration(seconds: 2),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-            }
-          } catch (e) {
-            print('更新目标描述失败: $e');
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('更新目标描述失败: $e'),
-                  backgroundColor: Colors.red,
-                  duration: const Duration(seconds: 2),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-            }
-          }
-        },
-        showTime: _showTime,
-        showDescription: _showDescription,
-      );
+    if (goals.isEmpty || currentGoal == null) {
+      return const Center(child: Text('没有目标'));
     }
 
-    return Stack(
-      children: [
-        FullScreenView(
-          currentGoal: currentGoal,
-          goals: goals,
-          isEditingTitle: _isEditingTitle,
-          titleController: _titleController,
-          onTitleEdit: _startTitleEdit,
-          onTitleSave: _saveTitle,
-          onDescriptionEdit: _showDescriptionDialog,
-          onImagePick: _showImagePicker,
-          onAddGoal: _showAddGoalDialog,
-          onGoalSelect: (goal) {
-            setState(() {
-              currentGoal = goal;
-            });
-          },
-          onUpdateDate: (goal, newDate) async {
-            try {
-              // 创建一个更新了日期的新目标对象
-              final updatedGoal = goal.copyWith(targetDate: newDate);
-
-              // 更新到数据库并刷新UI
-              await _updateGoal(updatedGoal);
-
-              // 返回成功，UI已在_updateGoal中刷新
-              return true;
-            } catch (e) {
-              print('更新目标日期失败: $e');
-              return false;
-            }
-          },
-          onSaveDescription: (goal, description) async {
-            try {
-              // 创建一个更新了描述的新目标对象
-              final updatedGoal = goal.copyWith(description: description);
-
-              // 更新到数据库并刷新UI
-              await _updateGoal(updatedGoal);
-
-              // 显示保存成功消息
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('目标描述已更新'),
-                    duration: const Duration(seconds: 2),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              }
-            } catch (e) {
-              print('更新目标描述失败: $e');
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('更新目标描述失败: $e'),
-                    backgroundColor: Colors.red,
-                    duration: const Duration(seconds: 2),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              }
-            }
-          },
-          showTime: _showTime,
-          showDescription: _showDescription,
-        ),
-        // 拆解目标按钮
-        if (currentGoal != null)
-          Positioned(
-            top: 438,
-            right: 50,
-            child: GestureDetector(
-              onTap: () async {
-                // 先获取子目标列表，确保子目标页面有数据显示
-                try {
-                  final childGoals =
-                      await _dbHelper.getGoals(parentId: currentGoal!.id);
-                  print('拆解目标: 获取到${childGoals.length}个子目标');
-
-                  // 导航到子目标页面
-                  if (!mounted) return;
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => GoalPage(
-                        parentGoal: currentGoal,
-                        onGoalTreeChanged: _refreshGoalTree,
-                      ),
-                    ),
-                  );
-
-                  // 返回时刷新父页面数据
-                  _refreshGoalTree();
-                } catch (e) {
-                  print('拆解目标出错: $e');
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('获取子目标失败: $e')),
-                  );
-                }
-              },
-              child: Container(
-                width: 43,
-                height: 43,
-                child: Stack(
-                  children: [
-                    Container(
-                      width: 43,
-                      height: 43,
-                      decoration: ShapeDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        shape: const OvalBorder(),
-                      ),
-                    ),
-                    Center(
-                      child: SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: Image.asset(
-                          'assets/icons/subgoal.png',
-                          width: 24,
-                          height: 24,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        // 倒计时显示区域 - 居中显示
-        if (currentGoal != null)
-          Positioned(
-            top: MediaQuery.of(context).size.height * 0.2, // 垂直方向约在屏幕1/5处
-            left: 0,
-            right: 0,
-            child: Center(
-              child: GoalStatusWidget(
-                goal: currentGoal!,
-                showCountdown: _showCountdown,
-              ),
-            ),
-          ),
-      ],
+    return FullScreenView(
+      currentGoal: currentGoal,
+      goals: goals,
+      isEditingTitle: _isEditingTitle,
+      titleController: _titleController,
+      onTitleEdit: _startTitleEdit,
+      onTitleSave: _saveTitleEdit,
+      onDescriptionEdit: () {
+        setState(() {
+          _showDescription = !_showDescription;
+        });
+      },
+      onSaveDescription: _updateGoalDescription,
+      onImagePick: _pickImage,
+      onGoalSelect: (goal) {
+        setState(() {
+          currentGoal = goal;
+        });
+      },
+      onAddGoal: () => _addNewGoalWrapper(),
+      onStatusChange: _handleUpdateGoalStatusSimple,
+      onUpdateDate: _updateGoalDate,
+      showTime: _showTime,
+      showDescription: _showDescription,
+      showTitle: _showTitle,
+      onToggleTitle: () {
+        setState(() {
+          _showTitle = !_showTitle;
+        });
+      },
+      onToggleDeadline: _toggleDeadline,
+      onAddSubGoal: () => _addSubGoalFromFullScreen(),
+      onSetCustomCountdown: (goal, days) =>
+          _setCustomCountdownForGoal(goal, days),
+      hasCustomCountdown: currentGoal?.hasCustomCountdown ?? false,
     );
   }
 
@@ -658,7 +635,7 @@ class GoalPageState extends State<GoalPage> {
   }
 
   // 保存标题
-  void _saveTitle() {
+  void _saveTitleEdit() {
     if (_titleController.text.isNotEmpty) {
       final updatedGoal = currentGoal!.copyWith(
         title: _titleController.text,
@@ -1156,7 +1133,7 @@ class GoalPageState extends State<GoalPage> {
     // 以下是原有的添加目标弹窗逻辑
     final TextEditingController titleController = TextEditingController();
     final TextEditingController descriptionController = TextEditingController();
-    DateTime? selectedDate;
+    // 移除 selectedDate 变量，不再需要日期选择
     String? imagePath;
 
     // 创建一个StatefulBuilder以确保弹窗内的状态更新能够刷新UI
@@ -1331,68 +1308,19 @@ class GoalPageState extends State<GoalPage> {
                         // 日期和图片选择器
                         Row(
                           children: [
-                            // 日期选择按钮
-                            Expanded(
-                              child: GestureDetector(
-                                onTap: () async {
-                                  // 显示日期选择器
-                                  final DateTime now = DateTime.now();
-                                  final DateTime? picked =
-                                      await _showCustomDatePicker(
-                                    context,
-                                    selectedDate ?? now,
-                                    '选择完成日期',
-                                  );
-                                  if (picked != null) {
-                                    setDialogState(() {
-                                      selectedDate = picked;
-                                    });
-                                  }
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 12,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey[50],
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.max,
-                                    children: [
-                                      Icon(
-                                        Icons.calendar_today,
-                                        size: 16,
-                                        color: Colors.black.withOpacity(0.6),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        selectedDate == null
-                                            ? '选择日期'
-                                            : DateFormat('yyyy-MM-dd')
-                                                .format(selectedDate!),
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          color: Colors.black.withOpacity(0.6),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
+                            // 移除日期选择按钮，只保留图片选择按钮
                             // 图片选择按钮，修改为调用_showImagePickerForNewGoal
                             Expanded(
                               child: GestureDetector(
                                 onTap: () {
-                                  // 显示选择配图弹窗
-                                  _showImagePickerForNewGoal(
-                                      (selectedImagePath) {
+                                  // 显示选择背景弹窗
+                                  _showImagePickerForNewGoal((selectedImagePath,
+                                      {isVideo = false}) {
                                     // 使用StatefulBuilder的setState刷新弹窗UI
                                     setDialogState(() {
                                       imagePath = selectedImagePath;
+                                      // 如果是视频，可以在这里设置额外标记
+                                      // 但由于这是新建目标的弹窗，我们会在创建Goal时设置hasVideo属性
                                     });
                                   });
                                 },
@@ -1415,7 +1343,7 @@ class GoalPageState extends State<GoalPage> {
                                       ),
                                       const SizedBox(width: 8),
                                       Text(
-                                        imagePath == null ? '选择配图' : '已选择配图',
+                                        imagePath == null ? '选择背景' : '已选择背景',
                                         style: TextStyle(
                                           fontSize: 14,
                                           color: Colors.black.withOpacity(0.6),
@@ -1437,14 +1365,28 @@ class GoalPageState extends State<GoalPage> {
                   child: ElevatedButton(
                     onPressed: () {
                       if (titleController.text.isNotEmpty) {
+                        // 检查是否是视频文件
+                        bool isVideo = false;
+                        if (imagePath != null) {
+                          final lowerPath = imagePath!.toLowerCase();
+                          isVideo = lowerPath.endsWith('.mp4') ||
+                              lowerPath.endsWith('.mov') ||
+                              lowerPath.endsWith('.avi') ||
+                              lowerPath.endsWith('.wmv') ||
+                              lowerPath.endsWith('.mkv');
+                        }
+
                         final newGoal = Goal(
                           title: titleController.text,
                           description: descriptionController.text,
                           imagePath:
                               imagePath ?? 'assets/images/default/default.jpg',
                           createdTime: DateTime.now(),
-                          targetDate: selectedDate,
+                          targetDate: null, // 不设置目标日期
                           parentId: widget.parentGoal?.id,
+                          videoPath: isVideo ? imagePath : null,
+                          hasVideo: isVideo,
+                          videoMuted: false, // 默认不静音
                         );
 
                         // 先关闭弹窗
@@ -1866,6 +1808,20 @@ class GoalPageState extends State<GoalPage> {
   /// 构建侧边栏
   Widget _buildDrawer() {
     final authService = Provider.of<AuthService>(context);
+
+    // 调试输出当前目标树结构
+    print(
+        '构建抽屉时的目标树结构：${allGoals.map((g) => '${g.id}:${g.title} (子项:${g.subGoals.length})').join(', ')}');
+
+    // 如果allGoals为空，尝试刷新目标树
+    if (allGoals.isEmpty) {
+      print('警告：树视图数据为空，尝试刷新');
+      // 使用Future.microtask确保在当前帧构建完成后执行刷新操作
+      Future.microtask(() async {
+        await _refreshGoalTree();
+      });
+    }
+
     return Drawer(
       child: Container(
         color: Theme.of(context).colorScheme.surface,
@@ -1912,6 +1868,7 @@ class GoalPageState extends State<GoalPage> {
             isLoggedIn: authService.isLoggedIn,
             userAvatar: authService.avatarUrl,
             onLogout: _handleLogout,
+            onExploreTab: _navigateToExplore, // 添加探索页面导航回调
           ),
         ),
       ),
@@ -1932,7 +1889,7 @@ class GoalPageState extends State<GoalPage> {
 
   // 为新建目标显示图片选择器
   Future<void> _showImagePickerForNewGoal(
-      Function(String) onImageSelected) async {
+      Function(String, {bool isVideo}) onImageSelected) async {
     if (!mounted) return;
 
     // 使用新的图片选择器组件
@@ -1955,17 +1912,85 @@ class GoalPageState extends State<GoalPage> {
     await ImagePickerDialog.show(
       context: context,
       membershipStatus: _membershipStatus,
-      onImageSelected: (imagePath) async {
-        // 更新当前目标的图片
-        final updatedGoal = currentGoal!.copyWith(
-          imagePath: imagePath,
-        );
-        await _updateGoal(updatedGoal);
+      onImageSelected: (path, {isVideo = false}) async {
+        if (currentGoal == null) return;
 
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已更新图片')),
-        );
+        if (isVideo) {
+          // 更新当前目标为视频
+          print('选择了视频文件: $path');
+
+          // 验证视频文件是否存在
+          final videoFile = File(path);
+          if (!videoFile.existsSync()) {
+            print('错误: 视频文件不存在: $path');
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('视频文件不存在或无法访问')),
+            );
+            return;
+          }
+
+          // 检查文件大小和可访问性
+          try {
+            final fileSize = videoFile.lengthSync();
+            print('视频文件存在，大小: $fileSize 字节');
+            if (fileSize <= 0) {
+              print('错误: 视频文件大小为0: $path');
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('视频文件大小为0，无法使用')),
+              );
+              return;
+            }
+
+            // 尝试读取文件的前几个字节，确认可访问性
+            final bytes = videoFile.openRead(0, 1024).first;
+            await bytes;
+          } catch (e) {
+            print('错误: 视频文件无法读取: $e');
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('视频文件无法读取: $e')),
+            );
+            return;
+          }
+
+          final updatedGoal = currentGoal!.copyWith(
+            imagePath: 'assets/images/default/default.jpg', // 使用默认图片路径
+            videoPath: path, // 保存视频路径到videoPath
+            hasVideo: true, // 标记为视频
+            videoMuted: false, // 默认不静音
+          );
+
+          print(
+              '更新目标为视频: id=${updatedGoal.id}, videoPath=${updatedGoal.videoPath}, hasVideo=${updatedGoal.hasVideo}');
+          await _updateGoal(updatedGoal);
+
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('已设置视频背景')),
+          );
+        } else {
+          // 更新当前目标的图片
+          print('选择了图片文件: $path');
+          final updatedGoal = currentGoal!.copyWith(
+            imagePath: path,
+            videoPath: null, // 清除视频路径
+            hasVideo: false, // 标记为非视频
+          );
+
+          print(
+              '更新目标为图片: id=${updatedGoal.id}, imagePath=${updatedGoal.imagePath}, hasVideo=${updatedGoal.hasVideo}');
+          await _updateGoal(updatedGoal);
+
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('已更新图片')),
+          );
+        }
+
+        // 刷新视图
+        setState(() {});
       },
       onMembershipPrompt: () {
         // 显示会员提示
@@ -2041,5 +2066,217 @@ class GoalPageState extends State<GoalPage> {
         SnackBar(content: Text('同步失败: $e')),
       );
     }
+  }
+
+  // 显示探索页面
+  void _navigateToExplore() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          appBar: AppBar(
+            title: Text('意识探索'),
+            backgroundColor: Colors.white,
+            foregroundColor: Colors.black,
+            elevation: 1,
+          ),
+          body: ExploreView(
+            onSelectCard: (Goal card) {
+              // 处理探索卡片选择
+              Navigator.pop(context);
+              setState(() {
+                currentView = 0; // 切换到全屏视图
+                currentGoal = card;
+              });
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 添加截止日期切换功能
+  Future<void> _toggleDeadline(Goal goal) async {
+    if (goal.targetDate != null) {
+      // 有截止日期，则清除
+      await _updateGoalDate(goal, null);
+    } else {
+      // 无截止日期，则设置
+      final now = DateTime.now();
+      await _updateGoalDate(goal, now.add(Duration(days: 30)));
+    }
+  }
+
+  // 更新目标描述
+  Future<void> _updateGoalDescription(Goal goal, String newDescription) async {
+    try {
+      final updatedGoal = goal.copyWith(
+        description: newDescription,
+      );
+      await _updateGoal(updatedGoal);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('更新描述失败: $e')),
+      );
+    }
+  }
+
+  // 选择图片
+  Future<void> _pickImage() async {
+    await _showImagePicker();
+  }
+
+  // 简化的状态更新处理方法
+  Future<void> _handleUpdateGoalStatusSimple(Goal goal, bool showDialog) async {
+    if (showDialog) {
+      _showStatusDialog(goal);
+    } else {
+      // 轮换状态: 待完成 -> 已完成 -> 已放弃 -> 待完成
+      GoalStatus newStatus;
+      switch (goal.status) {
+        case GoalStatus.pending:
+          newStatus = GoalStatus.completed;
+          break;
+        case GoalStatus.completed:
+          newStatus = GoalStatus.abandoned;
+          break;
+        case GoalStatus.abandoned:
+          newStatus = GoalStatus.pending;
+          break;
+      }
+
+      final updatedGoal = goal.copyWith(status: newStatus);
+      await _updateGoal(updatedGoal);
+    }
+  }
+
+  // 更新目标日期
+  Future<bool> _updateGoalDate(Goal goal, DateTime? newDate) async {
+    try {
+      final updatedGoal = goal.copyWith(targetDate: newDate);
+      await _updateGoal(updatedGoal);
+      return true;
+    } catch (e) {
+      print('更新日期失败: $e');
+      return false;
+    }
+  }
+
+  // 从全屏视图添加子目标
+  void _addSubGoalFromFullScreen() async {
+    if (currentGoal == null) return;
+
+    // 导航到新的子目标页面
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => GoalPage(
+          parentGoal: currentGoal,
+          onGoalTreeChanged: () {
+            // 子目标变化时刷新父页面
+            _refreshGoalTree();
+          },
+        ),
+      ),
+    );
+
+    // 返回后刷新目标树
+    await _refreshGoalTree();
+  }
+
+  // 显示自定义倒计时对话框
+  void _showCustomCountdownDialog() async {
+    if (currentGoal == null) return;
+
+    // 当前倒计时天数，默认30天
+    final int initialDays = currentGoal!.customCountdownDays ?? 30;
+
+    final result = await showDialog<int?>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('设置倒计时天数'),
+        content: StatefulBuilder(
+          builder: (context, setState) {
+            int selectedDays = initialDays;
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('选择倒计时天数: $selectedDays'),
+                Slider(
+                  min: 1,
+                  max: 365,
+                  divisions: 364,
+                  value: selectedDays.toDouble(),
+                  onChanged: (value) {
+                    setState(() {
+                      selectedDays = value.round();
+                    });
+                  },
+                ),
+              ],
+            );
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('取消'),
+          ),
+          TextButton(
+            onPressed: () {
+              // 关闭自定义倒计时
+              Navigator.pop(context, null);
+            },
+            child: Text('关闭倒计时'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, initialDays),
+            child: Text('确定'),
+          ),
+        ],
+      ),
+    );
+
+    // 更新自定义倒计时
+    if (result == null) {
+      // 关闭倒计时
+      final updatedGoal = currentGoal!.copyWith(
+        hasCustomCountdown: false,
+        customCountdownDays: null,
+      );
+      await _updateGoal(updatedGoal);
+    } else {
+      // 设置新的倒计时
+      final updatedGoal = currentGoal!.copyWith(
+        hasCustomCountdown: true,
+        customCountdownDays: result,
+      );
+      await _updateGoal(updatedGoal);
+    }
+  }
+
+  // 为特定目标设置自定义倒计时
+  Future<void> _setCustomCountdownForGoal(Goal goal, int? days) async {
+    if (days == null) {
+      // 关闭倒计时
+      final updatedGoal = goal.copyWith(
+        hasCustomCountdown: false,
+        customCountdownDays: null,
+      );
+      await _updateGoal(updatedGoal);
+    } else {
+      // 设置新的倒计时
+      final updatedGoal = goal.copyWith(
+        hasCustomCountdown: true,
+        customCountdownDays: days,
+      );
+      await _updateGoal(updatedGoal);
+    }
+  }
+
+  // 辅助方法，用于解决类型不匹配问题
+  void _addNewGoalWrapper() {
+    _showAddGoalDialog();
   }
 }

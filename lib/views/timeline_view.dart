@@ -40,7 +40,6 @@ class _TimelineViewState extends State<TimelineView> {
   final titleController = TextEditingController();
   final descriptionController = TextEditingController();
   String? selectedImagePath;
-  DateTime? selectedGoalDate;
 
   @override
   void dispose() {
@@ -111,54 +110,58 @@ class _TimelineViewState extends State<TimelineView> {
           child: SizedBox(
             width: 64,
             child: goal.targetDate == null
-                // 如果没有设置目标日期，显示日历图标
-                ? Padding(
-                    padding: const EdgeInsets.only(top: 8.0),
-                    child: Column(
-                      children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(10),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.0),
-                                blurRadius: 2,
-                                offset: const Offset(0, 1),
-                              ),
-                            ],
-                          ),
-                          child: const Center(
-                            child: Icon(
-                              Icons.event,
-                              size: 24,
-                              color: Color(0xD6464242),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        // Text(
-                        //   '待设定',
-                        //   style: TextStyle(
-                        //     color: Colors.grey,
-                        //     fontSize: 12,
-                        //     fontWeight: FontWeight.w500,
-                        //   ),
-                        // ),
-                      ],
-                    ),
-                  )
-                // 如果有设置目标日期，显示日期
+                // 如果没有设置目标日期，不显示时间相关内容
+                ? SizedBox.shrink()
+                // 如果有设置目标日期，显示创建日期和目标日期
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
+                      // 创建日期
+                      Text(
+                        yearFormat.format(goal.createdTime),
+                        style: const TextStyle(
+                          color: Color(0xD6464242),
+                          fontSize: 12,
+                          fontFamily: 'Abhaya Libre ExtraBold',
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text(
+                        monthFormat.format(goal.createdTime),
+                        style: const TextStyle(
+                          color: Color(0xD6464242),
+                          fontSize: 12,
+                          fontFamily: 'Abhaya Libre ExtraBold',
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text(
+                        dayFormat.format(goal.createdTime),
+                        style: const TextStyle(
+                          color: Color(0xD6464242),
+                          fontSize: 16,
+                          fontFamily: 'Abhaya Libre ExtraBold',
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      // 分隔符
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2.0),
+                        child: Text(
+                          '—',
+                          style: TextStyle(
+                            color: Colors.black,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      // 截止日期
                       Text(
                         yearFormat.format(goal.targetDate!),
                         style: const TextStyle(
                           color: Color(0xD6464242),
-                          fontSize: 16,
+                          fontSize: 12,
                           fontFamily: 'Abhaya Libre ExtraBold',
                           fontWeight: FontWeight.w800,
                         ),
@@ -167,7 +170,7 @@ class _TimelineViewState extends State<TimelineView> {
                         monthFormat.format(goal.targetDate!),
                         style: const TextStyle(
                           color: Color(0xD6464242),
-                          fontSize: 16,
+                          fontSize: 12,
                           fontFamily: 'Abhaya Libre ExtraBold',
                           fontWeight: FontWeight.w800,
                         ),
@@ -176,7 +179,7 @@ class _TimelineViewState extends State<TimelineView> {
                         dayFormat.format(goal.targetDate!),
                         style: const TextStyle(
                           color: Colors.black,
-                          fontSize: 24,
+                          fontSize: 16,
                           fontFamily: 'Abhaya Libre ExtraBold',
                           fontWeight: FontWeight.w800,
                         ),
@@ -259,41 +262,9 @@ class _TimelineViewState extends State<TimelineView> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 左侧时间轴改为日历图标，添加点击功能
-        GestureDetector(
-          onTap: () => _showDatePickerForNewGoal(this.context),
-          child: Container(
-            width: 64,
-            padding: const EdgeInsets.only(top: 8), // 调整上方对齐卡片
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    // 添加轻微阴影
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 2,
-                        offset: const Offset(0, 1),
-                      ),
-                    ],
-                  ),
-                  child: const Center(
-                    child: Icon(
-                      Icons.event,
-                      size: 24,
-                      color: Color(0xD6464242),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+        // 左侧时间轴占位，但不显示日历图标
+        SizedBox(
+          width: 64,
         ),
         // 中间的时间线 - 调整上下对齐
         Container(
@@ -362,22 +333,22 @@ class _TimelineViewState extends State<TimelineView> {
 
   Widget _buildAddCard() {
     print('_buildAddCard 被调用');
-    // 使用真正的状态管理而不是StatefulBuilder，并传递日期数据
+    // 使用真正的状态管理而不是StatefulBuilder，并移除日期数据
     return _AddCardWidget(
       titleController: titleController,
       descriptionController: descriptionController,
       selectedImagePath: selectedImagePath,
-      selectedDate: selectedGoalDate, // 传递选择的日期
+      // 移除 selectedDate 参数
       onImageSelected: _onImageSelected,
       isSubgoal: widget.isSubgoal, // 传递isSubgoal属性
       onSaveGoal: (title, description) {
         if (widget.onSaveNewGoal != null) {
-          // 同时保存选定的日期，实现完整的数据流
+          // 保存时不再传递日期
           widget.onSaveNewGoal!(
             title,
             description,
             selectedImagePath ?? 'assets/images/default/default.jpg',
-            selectedGoalDate, // 传递选定的日期
+            null, // 传递 null 作为日期
           );
 
           // 清空输入
@@ -385,7 +356,6 @@ class _TimelineViewState extends State<TimelineView> {
           descriptionController.clear();
           setState(() {
             selectedImagePath = null;
-            selectedGoalDate = null; // 清空日期选择
           });
         } else {
           widget.onAddGoal();
@@ -568,123 +538,6 @@ class _TimelineViewState extends State<TimelineView> {
     }
   }
 
-  // 为新目标显示日期选择器
-  Future<void> _showDatePickerForNewGoal(BuildContext context) async {
-    // 我们需要使用StatefulBuilder来实时更新日期选择
-    final DateTime initialDate = selectedGoalDate ?? DateTime.now();
-
-    DateTime? selectedDate = await showDialog<DateTime>(
-      context: context,
-      builder: (BuildContext context) {
-        DateTime tempSelectedDate = initialDate;
-
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setState) {
-            return Dialog(
-              insetPadding: const EdgeInsets.symmetric(horizontal: 16),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20)),
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // 日期选择器部分 - 简洁版本，无标题
-                  Container(
-                    height: 400,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Theme(
-                      data: ThemeData.light().copyWith(
-                        primaryColor: Colors.black,
-                        colorScheme: ColorScheme.light(
-                          primary: Colors.black,
-                          onPrimary: Colors.white,
-                          onSurface: Colors.black87,
-                        ),
-                      ),
-                      child: CalendarDatePicker(
-                        initialDate: tempSelectedDate,
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                        onDateChanged: (DateTime date) {
-                          setState(() {
-                            tempSelectedDate = date;
-                          });
-                        },
-                      ),
-                    ),
-                  ),
-
-                  // 底部按钮 - 仅保留取消和确定
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          style: TextButton.styleFrom(
-                            foregroundColor: Colors.grey[600],
-                          ),
-                          child:
-                              const Text('取消', style: TextStyle(fontSize: 16)),
-                        ),
-                        const SizedBox(width: 16),
-                        ElevatedButton(
-                          onPressed: () =>
-                              Navigator.pop(context, tempSelectedDate),
-                          style: ButtonStyle(
-                            backgroundColor: MaterialStateProperty.all<Color>(
-                                const Color(0xFF000000)),
-                            foregroundColor:
-                                MaterialStateProperty.all<Color>(Colors.white),
-                            padding:
-                                MaterialStateProperty.all<EdgeInsetsGeometry>(
-                                    const EdgeInsets.symmetric(
-                                        horizontal: 24, vertical: 10)),
-                            shape: MaterialStateProperty.all<
-                                RoundedRectangleBorder>(
-                              RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                            elevation: MaterialStateProperty.all<double>(0),
-                          ),
-                          child:
-                              const Text('确定', style: TextStyle(fontSize: 16)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-
-    if (selectedDate != null) {
-      // 更新选择的日期
-      setState(() {
-        selectedGoalDate = selectedDate;
-
-        // 显示日期选择成功消息，并明确显示选择的日期
-        final formattedDate = _formatDateChinese(selectedDate);
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('目标日期已设为$formattedDate'),
-            duration: const Duration(seconds: 2),
-            behavior: SnackBarBehavior.floating,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            margin: const EdgeInsets.all(8),
-          ),
-        );
-      });
-    }
-  }
-
   // 中文格式化日期显示
   String _formatDateChinese(DateTime date) {
     // 只显示年份
@@ -748,9 +601,10 @@ class _TimelineViewState extends State<TimelineView> {
   }
 
   // 使用时间轴类需要的唯一的图片选择器方法
-  void _onImageSelected(String imagePath) {
+  void _onImageSelected(String imagePath, {bool isVideo = false}) {
     setState(() {
       selectedImagePath = imagePath;
+      // 这里我们可以添加对视频的处理，但在TimelineView中目前不需要区分视频和图片
     });
   }
 
@@ -796,6 +650,7 @@ class _YearPickerState extends State<_YearPicker> {
     _selectedYear = widget.initialDate.year;
   }
 
+//年份选择器
   @override
   Widget build(BuildContext context) {
     return Dialog(
@@ -893,8 +748,7 @@ class _AddCardWidget extends StatefulWidget {
   final TextEditingController titleController;
   final TextEditingController descriptionController;
   final String? selectedImagePath;
-  final DateTime? selectedDate; // 添加日期字段
-  final Function(String) onImageSelected;
+  final Function(String, {bool isVideo}) onImageSelected;
   final Function(String, String) onSaveGoal;
   final bool isSubgoal;
 
@@ -902,7 +756,6 @@ class _AddCardWidget extends StatefulWidget {
     required this.titleController,
     required this.descriptionController,
     required this.selectedImagePath,
-    this.selectedDate, // 日期可为空
     required this.onImageSelected,
     required this.onSaveGoal,
     required this.isSubgoal,
@@ -912,25 +765,10 @@ class _AddCardWidget extends StatefulWidget {
   _AddCardWidgetState createState() => _AddCardWidgetState();
 }
 
+//可编辑卡片组件
 class _AddCardWidgetState extends State<_AddCardWidget> {
   bool isTitleEditing = false;
   bool isDescriptionEditing = false;
-
-  // 格式化日期显示
-  String _formatDate(DateTime date) {
-    // 只显示年份
-    if (date.month == 1 && date.day == 1) {
-      return '${date.year}';
-    }
-    // 显示年月
-    else if (date.day == 1) {
-      return '${date.year}/${date.month}';
-    }
-    // 显示完整日期
-    else {
-      return '${date.year}/${date.month}/${date.day}';
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1030,28 +868,6 @@ class _AddCardWidgetState extends State<_AddCardWidget> {
                             ),
                           ),
                   ),
-                  // 显示已选择的日期
-                  if (widget.selectedDate != null)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: widget.selectedImagePath != null
-                            ? Colors.white.withOpacity(0.3)
-                            : Theme.of(context).primaryColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        _formatDate(widget.selectedDate!),
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: widget.selectedImagePath != null
-                              ? Colors.white
-                              : Theme.of(context).primaryColor,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
                 ],
               ),
 
@@ -1203,7 +1019,9 @@ class _AddCardWidgetState extends State<_AddCardWidget> {
     await ImagePickerDialog.show(
       context: context,
       membershipStatus: membershipStatus,
-      onImageSelected: widget.onImageSelected,
+      onImageSelected: (path, {isVideo = false}) {
+        widget.onImageSelected(path, isVideo: isVideo);
+      },
       onMembershipPrompt: () {
         // 显示会员提示
         MembershipPromptDialog.showImagePrompt(context);

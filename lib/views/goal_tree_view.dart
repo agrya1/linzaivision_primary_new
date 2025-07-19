@@ -22,6 +22,7 @@ class GoalTreeView extends StatefulWidget {
   final VoidCallback onSettingsTap; // 设置页面点击回调
   final VoidCallback onLoginTap; // 登录页面点击回调
   final VoidCallback? onLogout; // 退出登录回调
+  final VoidCallback? onExploreTab; // 探索页面点击回调
 
   const GoalTreeView({
     super.key,
@@ -37,6 +38,7 @@ class GoalTreeView extends StatefulWidget {
     required this.onSettingsTap,
     required this.onLoginTap,
     this.onLogout,
+    this.onExploreTab,
   });
 
   @override
@@ -48,13 +50,49 @@ class _GoalTreeViewState extends State<GoalTreeView> {
   final Map<int?, bool> _expansionState = {};
 
   @override
+  void initState() {
+    super.initState();
+    // 初始化时设置所有有子目标的条目默认展开
+    _initExpansionState();
+  }
+
+  @override
+  void didUpdateWidget(GoalTreeView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 当goals发生变化时，重新初始化展开状态
+    if (oldWidget.goals != widget.goals) {
+      _initExpansionState();
+    }
+  }
+
+  // 初始化展开状态，有子目标的条目默认展开
+  void _initExpansionState() {
+    for (var goal in widget.goals) {
+      _setInitialExpansion(goal);
+    }
+  }
+
+  // 递归设置初始展开状态
+  void _setInitialExpansion(Goal goal) {
+    if (goal.subGoals.isNotEmpty) {
+      // 有子目标的条目默认展开
+      _expansionState[goal.id] = true;
+
+      // 递归处理子目标
+      for (var subGoal in goal.subGoals) {
+        _setInitialExpansion(subGoal);
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         // 抽屉头部 - 添加透明度
         Container(
           padding: EdgeInsets.only(
-            top: MediaQuery.of(context).padding.top + 16,
+            top: MediaQuery.of(context).padding.top + 24,
             bottom: 16,
             left: 16,
             right: 16,
@@ -63,7 +101,7 @@ class _GoalTreeViewState extends State<GoalTreeView> {
             color: Theme.of(context)
                 .colorScheme
                 .surfaceContainerHighest
-                .withOpacity(0.9),
+                .withOpacity(0.1),
             borderRadius: const BorderRadius.only(
               bottomRight: Radius.circular(32),
             ),
@@ -73,66 +111,50 @@ class _GoalTreeViewState extends State<GoalTreeView> {
             children: [
               // 标题栏
               Row(
-                mainAxisAlignment: MainAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    '心愿池',
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+                  // 替换文本为Logo图标
+                  GestureDetector(
+                    onTap: _navigateToFirstCard,
+                    child: Image.asset(
+                      'assets/images/app_logo.png',
+                      width: 48,
+                      height: 48,
+                    ),
+                  ),
+
+                  // 右上角搜索图标
+                  IconButton(
+                    icon: Icon(
+                      Icons.search,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                    onPressed: widget.onSearchTap,
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
-              // 搜索栏
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: widget.onSearchTap,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 0,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .outline
-                              .withOpacity(0.1),
-                        ),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.search,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          '搜索心愿',
-                          style:
-                              Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                  ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+              // 移除搜索栏
             ],
           ),
         ),
         // 目标列表
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.only(top: 4),
             children: [
+              // 添加探索入口
+              if (widget.onExploreTab != null)
+                ListTile(
+                  leading: null,
+                  title: Text('意识探索'),
+                  onTap: widget.onExploreTab,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 18),
+                ),
+
+              // 分隔线
+              // if (widget.onExploreTab != null) Divider(height: 0.01),
+
+              // 目标树
               _buildGoalTree(widget.goals, 0),
             ],
           ),
@@ -458,5 +480,12 @@ class _GoalTreeViewState extends State<GoalTreeView> {
         );
       }).toList(),
     );
+  }
+
+  // 添加返回第一个卡片的方法
+  void _navigateToFirstCard() {
+    if (widget.goals.isNotEmpty && widget.onGoalSelect != null) {
+      widget.onGoalSelect!(widget.goals.first);
+    }
   }
 }

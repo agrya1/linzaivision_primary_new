@@ -28,7 +28,14 @@ dependencies:
   # 用于打开外部链接
   url_launcher: ^6.2.4
   flutter_native_splash: ^2.4.0
+  video_player: ^2.10.0
+  # 视频缩略图生成
+  video_thumbnail: ^0.5.3
   # media_scanner_scan_file: ^0.0.3
+  
+  # 状态管理
+  flutter_bloc: ^8.1.6
+  equatable: ^2.0.5
   
 dev_dependencies:
   flutter_test:

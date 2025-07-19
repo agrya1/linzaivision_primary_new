@@ -17,6 +17,15 @@ class Goal {
   List<Goal> subGoals; // 子目标列表
   int? parentId; // 父目标引用
 
+  // 视频相关属性
+  String? videoPath; // 视频路径
+  bool hasVideo; // 是否有视频
+  bool videoMuted; // 视频是否静音
+
+  // 自定义倒计时
+  int? customCountdownDays; // 自定义倒计时天数
+  bool hasCustomCountdown; // 是否有自定义倒计时
+
   Goal({
     this.id,
     required this.title,
@@ -27,7 +36,15 @@ class Goal {
     this.targetDate,
     this.parentId,
     this.subGoals = const [],
+    this.videoPath,
+    this.hasVideo = false,
+    this.videoMuted = false,
+    this.customCountdownDays,
+    this.hasCustomCountdown = false,
   });
+
+  /// 判断是否有截止日期
+  bool get hasTargetDate => targetDate != null;
 
   /// 从 JSON 创建目标
   factory Goal.fromJson(Map<String, dynamic> json) {
@@ -48,6 +65,11 @@ class Goal {
               ?.map((e) => Goal.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],
+      videoPath: json['videoPath'] as String?,
+      hasVideo: json['hasVideo'] as bool? ?? false,
+      videoMuted: json['videoMuted'] as bool? ?? false,
+      customCountdownDays: json['customCountdownDays'] as int?,
+      hasCustomCountdown: json['hasCustomCountdown'] as bool? ?? false,
     );
   }
 
@@ -62,6 +84,11 @@ class Goal {
       'targetDate': targetDate?.toIso8601String(),
       'status': status.toString(),
       'subGoals': subGoals.map((goal) => goal.toJson()).toList(),
+      'videoPath': videoPath,
+      'hasVideo': hasVideo,
+      'videoMuted': videoMuted,
+      'customCountdownDays': customCountdownDays,
+      'hasCustomCountdown': hasCustomCountdown,
     };
   }
 
@@ -75,6 +102,11 @@ class Goal {
     GoalStatus? status,
     List<Goal>? subGoals,
     int? parentId,
+    String? videoPath,
+    bool? hasVideo,
+    bool? videoMuted,
+    int? customCountdownDays,
+    bool? hasCustomCountdown,
   }) {
     return Goal(
       id: id,
@@ -86,6 +118,11 @@ class Goal {
       status: status ?? this.status,
       subGoals: subGoals ?? this.subGoals,
       parentId: parentId ?? this.parentId,
+      videoPath: videoPath ?? this.videoPath,
+      hasVideo: hasVideo ?? this.hasVideo,
+      videoMuted: videoMuted ?? this.videoMuted,
+      customCountdownDays: customCountdownDays ?? this.customCountdownDays,
+      hasCustomCountdown: hasCustomCountdown ?? this.hasCustomCountdown,
     );
   }
 
@@ -108,6 +145,11 @@ class Goal {
       'created_time': createdTime.millisecondsSinceEpoch,
       'target_date': targetDate?.millisecondsSinceEpoch,
       'parent_id': parentId,
+      'video_path': videoPath,
+      'has_video': hasVideo ? 1 : 0,
+      'video_muted': videoMuted ? 1 : 0,
+      'custom_countdown_days': customCountdownDays,
+      'has_custom_countdown': hasCustomCountdown ? 1 : 0,
     };
   }
 
@@ -124,6 +166,11 @@ class Goal {
           ? DateTime.fromMillisecondsSinceEpoch(map['target_date'])
           : null,
       parentId: map['parent_id'],
+      videoPath: map['video_path'],
+      hasVideo: map['has_video'] == 1,
+      videoMuted: map['video_muted'] == 1,
+      customCountdownDays: map['custom_countdown_days'],
+      hasCustomCountdown: map['has_custom_countdown'] == 1,
     );
   }
 }
