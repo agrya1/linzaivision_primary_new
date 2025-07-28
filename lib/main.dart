@@ -7,10 +7,34 @@ import 'pages/goal_page.dart';
 import 'package:linzaivision_primary/theme/app_theme.dart';
 import 'package:linzaivision_primary/services/auth_service.dart';
 import 'package:linzaivision_primary/services/api_service.dart';
+import 'package:linzaivision_primary/services/storage_service.dart';
+import 'package:linzaivision_primary/services/shared_prefs_storage_service.dart';
 import 'package:linzaivision_primary/bloc/goal/goal_bloc.dart';
 import 'package:linzaivision_primary/repository/goal_repository.dart';
 import 'package:linzaivision_primary/database/database_helper.dart';
 import 'package:linzaivision_primary/utils/error_handler.dart';
+import 'repository/explore_repository.dart';
+import 'repository/search_repository.dart';
+import 'repository/auth_repository.dart';
+import 'repository/settings_repository.dart';
+import 'repository/profile_repository.dart';
+import 'bloc/explore/explore_bloc.dart';
+import 'bloc/search/search_bloc.dart';
+import 'bloc/auth/auth_bloc.dart';
+import 'bloc/auth/auth_event.dart';
+import 'bloc/settings/settings_bloc.dart';
+import 'bloc/profile/profile_bloc.dart';
+import 'bloc/profile/profile_event.dart';
+import 'routes/app_routes.dart';
+import 'routes/app_router.dart';
+import 'routes/route_observer.dart';
+import 'routes/route_middleware.dart';
+import 'routes/route_analytics.dart';
+import 'routes/analytics_middleware.dart';
+import 'routes/route_params_middleware.dart';
+import 'routes/navigation_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../bloc/use_card/use_card_bloc.dart';
 
 Future<void> main() async {
   // 确保 Flutter 绑定初始化
@@ -20,6 +44,36 @@ Future<void> main() async {
   if (!kIsWeb) {
     initializeDatabase();
   }
+
+  // 初始化SharedPreferences
+  final prefs = await SharedPreferences.getInstance();
+  
+  // 创建StorageService实例
+  final storageService = SharedPrefsStorageService(prefs);
+
+  // 初始化路由分析服务
+  final routeAnalytics = RouteAnalytics();
+  routeAnalytics.init(storageService);
+  
+  // 创建路由参数中间件
+  final routeParamsMiddleware = RouteParamsMiddleware();
+  
+  // 为目标详情页添加参数验证器
+  routeParamsMiddleware.addValidator(AppRoutes.goalDetails, (params) {
+    if (params is! Map<String, dynamic> || !params.containsKey('goalId')) {
+      return ValidationResult.invalid('目标详情页参数必须包含goalId');
+    }
+    final goalId = params['goalId'];
+    if (goalId is! int || goalId <= 0) {
+      return ValidationResult.invalid('goalId必须是大于0的整数');
+    }
+    return ValidationResult.valid();
+  });
+  
+  // 添加路由中间件
+  AppRouter.addMiddleware(RouteLoggerMiddleware());
+  AppRouter.addMiddleware(AnalyticsMiddleware(routeAnalytics));
+  AppRouter.addMiddleware(routeParamsMiddleware);
 
   // 初始化认证服务
   try {
@@ -31,11 +85,13 @@ Future<void> main() async {
     // 即使认证服务初始化失败，也继续启动应用
   }
 
-  runApp(const MyApp());
+  runApp(MyApp(storageService: storageService));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final StorageService storageService;
+  
+  const MyApp({super.key, required this.storageService});
 
   @override
   Widget build(BuildContext context) {
@@ -43,10 +99,20 @@ class MyApp extends StatelessWidget {
     final apiService = ApiService();
     
     // 创建数据库助手实例
-    final databaseHelper = DatabaseHelper();
+    final databaseHelper = DatabaseHelper(isTest: false);
     
     // 创建仓库实例
     final goalRepository = GoalRepositoryImpl(databaseHelper);
+    final exploreRepository = ExploreRepositoryImpl();
+    final searchRepository = SearchRepositoryImpl(databaseHelper);
+    final settingsRepository = SettingsRepositoryImpl(storageService);
+    
+    // 创建路由观察者
+    final routeObserver = AppRouteObserver([
+      RouteLoggerMiddleware(),
+      AnalyticsMiddleware(RouteAnalytics()),
+      RouteParamsMiddleware(),
+    ]);
 
     return MultiProvider(
       providers: [
@@ -54,25 +120,102 @@ class MyApp extends StatelessWidget {
         Provider<ApiService>.value(value: apiService),
         // 提供数据库助手
         Provider<DatabaseHelper>.value(value: databaseHelper),
+        // 提供StorageService
+        Provider<StorageService>.value(value: storageService),
         // 提供目标仓库
         Provider<GoalRepository>.value(value: goalRepository),
+        Provider<ExploreRepository>.value(value: exploreRepository),
+        Provider<SearchRepository>.value(value: searchRepository),
+        // 提供设置仓库
+        Provider<SettingsRepository>.value(value: settingsRepository),
         // 提供全局访问AuthService的能力
         ChangeNotifierProvider<AuthService>(
-          create: (context) => AuthService(),
+          create: (_) => AuthService(),
         ),
+        // 提供AuthRepository
+        Provider<AuthRepository>(
+          create: (context) => AuthRepositoryImpl(
+            context.read<AuthService>(),
+            context.read<StorageService>(),
+          ),
+        ),
+        // 提供路由分析服务
+        Provider<RouteAnalytics>.value(value: RouteAnalytics()),
+        // 提供导航服务
+        Provider<NavigationService>.value(value: NavigationService()),
         // 提供GoalBloc
         BlocProvider<GoalBloc>(
           create: (context) => GoalBloc(
             repository: context.read<GoalRepository>(),
           ),
         ),
-      ],
-      child: ErrorBoundary(
-        child: MaterialApp(
-          title: '临在意识',
-          theme: AppTheme.createTheme(),
-          home: const MyHomePage(),
+        BlocProvider<ExploreBloc>(
+          create: (context) => ExploreBloc(
+            exploreRepository: context.read<ExploreRepository>(),
+            goalRepository: context.read<GoalRepository>(),
+          ),
         ),
+        BlocProvider<SearchBloc>(
+          create: (context) => SearchBloc(repository: context.read<SearchRepository>()),
+        ),
+        // 提供AuthBloc
+        BlocProvider<AuthBloc>(
+          create: (context) => AuthBloc(
+            authRepository: context.read<AuthRepository>(),
+          )..add(CheckAuthStatusEvent()), // 应用启动时检查登录状态
+        ),
+        // 提供SettingsBloc
+        BlocProvider<SettingsBloc>(
+          create: (context) => SettingsBloc(
+            repository: context.read<SettingsRepository>(),
+          )..add(LoadSettings()), // 应用启动时加载设置
+        ),
+        // 提供ProfileRepository
+        Provider<ProfileRepository>(
+          create: (context) => ProfileRepositoryImpl(
+            context.read<AuthService>(),
+            context.read<StorageService>(),
+            context.read<ApiService>(),
+          ),
+        ),
+        // 提供ProfileBloc
+        BlocProvider<ProfileBloc>(
+          create: (context) => ProfileBloc(
+            repository: context.read<ProfileRepository>(),
+          )..add(const LoadProfile()), // 应用启动时加载用户资料
+        ),
+        BlocProvider<UseCardBloc>(
+          create: (context) => UseCardBloc(
+            goalRepository: context.read<GoalRepository>(),
+          ),
+        ),
+      ],
+      child: BlocBuilder<SettingsBloc, SettingsState>(
+        builder: (context, settingsState) {
+          // 根据设置状态决定主题
+          ThemeMode themeMode = ThemeMode.system;
+          
+          if (settingsState is SettingsLoaded) {
+            if (settingsState.followSystemTheme) {
+              themeMode = ThemeMode.system;
+            } else {
+              themeMode = settingsState.themeMode == 'dark' ? ThemeMode.dark : ThemeMode.light;
+            }
+          }
+          
+          return ErrorBoundary(
+            child: MaterialApp(
+              title: '临在意识',
+              theme: AppTheme.createTheme(isDark: false),
+              darkTheme: AppTheme.createTheme(isDark: true),
+              themeMode: themeMode,
+              initialRoute: AppRoutes.home,
+              onGenerateRoute: AppRouter.generateRoute,
+              navigatorKey: NavigationService().navigatorKey,
+              navigatorObservers: [routeObserver],
+            ),
+          );
+        },
       ),
     );
   }

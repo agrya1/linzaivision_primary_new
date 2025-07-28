@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
-import 'dart:io';
 
-/// 性能优化工具类
+/// 性能工具类
+/// 
+/// 包含性能优化和性能监控功能
 class PerformanceUtils {
   /// 图片缓存管理器
   static final Map<String, ImageProvider> _imageCache = {};
+  
+  // 存储操作开始时间的映射表
+  static final Map<String, DateTime> _startTimes = {};
+  
+  // 存储操作耗时的映射表
+  static final Map<String, List<Duration>> _durations = {};
   
   /// 获取缓存的图片
   static ImageProvider getCachedImage(String path) {
@@ -81,6 +88,205 @@ class PerformanceUtils {
         func(args);
       }
     };
+  }
+  
+  /// 开始计时
+  /// 
+  /// 参数:
+  /// - operationId: 操作标识符，用于区分不同的操作
+  static void startOperation(String operationId) {
+    _startTimes[operationId] = DateTime.now();
+  }
+  
+  /// 结束计时并记录耗时
+  /// 
+  /// 参数:
+  /// - operationId: 操作标识符，需要与startOperation中的一致
+  /// - logResult: 是否在控制台输出结果
+  /// - success: 操作是否成功
+  /// - message: 操作成功或失败的消息
+  /// - data: 附加数据
+  /// 返回值:
+  /// - Duration: 操作耗时
+  static Duration endOperation(
+    String operationId, {
+    bool logResult = true,
+    bool success = true,
+    String? message,
+    Map<String, dynamic>? data,
+  }) {
+    final endTime = DateTime.now();
+    final startTime = _startTimes[operationId];
+    
+    if (startTime == null) {
+      debugPrint('警告: 未找到操作 "$operationId" 的开始时间');
+      return Duration.zero;
+    }
+    
+    final duration = endTime.difference(startTime);
+    
+    // 记录耗时
+    if (!_durations.containsKey(operationId)) {
+      _durations[operationId] = [];
+    }
+    _durations[operationId]!.add(duration);
+    
+    // 输出日志
+    if (logResult) {
+      final status = success ? '成功' : '失败';
+      final msgText = message != null ? ' - $message' : '';
+      final dataText = data != null ? ' - $data' : '';
+      debugPrint('【性能】$operationId: ${duration.inMilliseconds}ms ($status)$msgText$dataText');
+    }
+    
+    return duration;
+  }
+  
+  /// 获取操作的平均耗时
+  /// 
+  /// 参数:
+  /// - operationId: 操作标识符
+  /// 返回值:
+  /// - Duration: 平均耗时，如果没有记录则返回Duration.zero
+  static Duration getAverageDuration(String operationId) {
+    final durations = _durations[operationId];
+    if (durations == null || durations.isEmpty) {
+      return Duration.zero;
+    }
+    
+    final totalMilliseconds = durations.fold<int>(
+      0, (sum, duration) => sum + duration.inMilliseconds);
+    
+    return Duration(milliseconds: totalMilliseconds ~/ durations.length);
+  }
+  
+  /// 比较两个操作的平均耗时
+  /// 
+  /// 参数:
+  /// - operation1: 第一个操作标识符
+  /// - operation2: 第二个操作标识符
+  /// - logResult: 是否在控制台输出结果
+  /// 返回值:
+  /// - double: 第一个操作相对于第二个操作的耗时比例（operation1 / operation2）
+  static double compareOperations(
+    String operation1, 
+    String operation2, 
+    {bool logResult = true}
+  ) {
+    final duration1 = getAverageDuration(operation1);
+    final duration2 = getAverageDuration(operation2);
+    
+    if (duration2 == Duration.zero) {
+      if (logResult) {
+        debugPrint('警告: 操作 "$operation2" 没有记录或耗时为0');
+      }
+      return 0;
+    }
+    
+    final ratio = duration1.inMicroseconds / duration2.inMicroseconds;
+    
+    if (logResult) {
+      debugPrint('【性能比较】$operation1 vs $operation2: ${ratio.toStringAsFixed(2)}x');
+      debugPrint('  - $operation1: ${duration1.inMilliseconds}ms (平均)');
+      debugPrint('  - $operation2: ${duration2.inMilliseconds}ms (平均)');
+    }
+    
+    return ratio;
+  }
+  
+  /// 重置指定操作的计时记录
+  /// 
+  /// 参数:
+  /// - operationId: 操作标识符，如果为null则重置所有记录
+  static void resetOperations([String? operationId]) {
+    if (operationId != null) {
+      _startTimes.remove(operationId);
+      _durations.remove(operationId);
+    } else {
+      _startTimes.clear();
+      _durations.clear();
+    }
+  }
+  
+  /// 获取操作的统计信息
+  /// 
+  /// 参数:
+  /// - operationId: 操作标识符
+  /// 返回值:
+  /// - Map: 包含最小、最大、平均、总次数等统计信息
+  static Map<String, dynamic> getOperationStats(String operationId) {
+    final durations = _durations[operationId];
+    if (durations == null || durations.isEmpty) {
+      return {
+        'minTime': 0,
+        'maxTime': 0,
+        'averageTime': 0,
+        'count': 0,
+        'totalTime': 0,
+      };
+    }
+    
+    final minDuration = durations.reduce((a, b) => 
+      a.inMicroseconds < b.inMicroseconds ? a : b);
+    final maxDuration = durations.reduce((a, b) => 
+      a.inMicroseconds > b.inMicroseconds ? a : b);
+    final avgDuration = getAverageDuration(operationId);
+    final totalDuration = durations.fold<Duration>(
+      Duration.zero, (sum, duration) => sum + duration);
+    
+    return {
+      'minTime': minDuration.inMilliseconds,
+      'maxTime': maxDuration.inMilliseconds,
+      'averageTime': avgDuration.inMilliseconds,
+      'count': durations.length,
+      'totalTime': totalDuration.inMilliseconds,
+    };
+  }
+  
+  /// 获取所有操作的统计信息
+  /// 
+  /// 返回值:
+  /// - Map: 包含所有操作的统计信息，键为操作标识符，值为统计信息Map
+  static Map<String, Map<String, dynamic>> getAllStats() {
+    final result = <String, Map<String, dynamic>>{};
+    
+    for (final operationId in _durations.keys) {
+      result[operationId] = getOperationStats(operationId);
+    }
+    
+    return result;
+  }
+  
+  /// 清除所有性能统计数据
+  static void clearAllStats() {
+    _startTimes.clear();
+    _durations.clear();
+  }
+  
+  /// 输出所有操作的统计信息
+  static void printAllStats() {
+    debugPrint('\n===== 性能统计 =====');
+    
+    if (_durations.isEmpty) {
+      debugPrint('没有记录任何操作');
+      return;
+    }
+    
+    // 按平均耗时降序排列
+    final sortedOperations = _durations.keys.toList()
+      ..sort((a, b) => getAverageDuration(b).compareTo(getAverageDuration(a)));
+    
+    for (final operationId in sortedOperations) {
+      final stats = getOperationStats(operationId);
+      debugPrint('$operationId:');
+      debugPrint('  - 最小: ${stats['minTime']}ms');
+      debugPrint('  - 最大: ${stats['maxTime']}ms');
+      debugPrint('  - 平均: ${stats['averageTime']}ms');
+      debugPrint('  - 次数: ${stats['count']}');
+      debugPrint('  - 总计: ${stats['totalTime']}ms');
+    }
+    
+    debugPrint('===================\n');
   }
 }
 

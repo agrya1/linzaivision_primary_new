@@ -7,8 +7,17 @@ import 'package:linzaivision_primary/pages/about_page.dart';
 import 'package:linzaivision_primary/services/auth_service.dart';
 import 'package:linzaivision_primary/widgets/user_avatar.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:linzaivision_primary/pages/avatar_upload_page.dart';
 import 'package:linzaivision_primary/pages/team_apps_page.dart';
+import 'package:linzaivision_primary/pages/developer_settings_page.dart';
+import 'package:linzaivision_primary/pages/settings/theme_settings_page.dart';
+import 'package:linzaivision_primary/pages/settings/language_settings_page.dart';
+import 'package:linzaivision_primary/pages/settings/home_page_settings_page.dart';
+import 'package:linzaivision_primary/bloc/settings/settings_bloc.dart';
+import 'package:linzaivision_primary/bloc/profile/profile_bloc.dart';
+import 'package:linzaivision_primary/bloc/profile/profile_event.dart';
+import 'package:linzaivision_primary/bloc/profile/profile_state.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -67,33 +76,109 @@ class SettingsPage extends StatelessWidget {
 
             const SizedBox(height: 24),
 
+            // 个性化设置分组
+            BlocBuilder<SettingsBloc, SettingsState>(
+              builder: (context, state) {
+                if (state is SettingsLoaded) {
+                  return _buildSettingsGroup(
+                    context,
+                    title: '个性化',
+                    children: [
+                      _buildSettingItem(
+                        context,
+                        icon: Icons.brightness_6,
+                        title: '主题设置',
+                        subtitle: state.followSystemTheme 
+                            ? '跟随系统' 
+                            : (state.themeMode == 'dark' ? '暗黑模式' : '明亮模式'),
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const ThemeSettingsPage()),
+                        ),
+                      ),
+                      _buildSettingItem(
+                        context,
+                        icon: Icons.language,
+                        title: '语言设置',
+                        subtitle: _getLanguageName(state.language),
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const LanguageSettingsPage()),
+                        ),
+                      ),
+                      _buildSettingItem(
+                        context,
+                        icon: Icons.home,
+                        title: '首页设置',
+                        subtitle: state.homePage == 'explore' ? '意识探索' : '我的意识',
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const HomePageSettingsPage()),
+                        ),
+                      ),
+                    ],
+                  );
+                }
+                return const SizedBox.shrink(); // 如果状态未加载，则不显示此分组
+              },
+            ),
+
+            const SizedBox(height: 24),
+
+            // 关于分组
             _buildSettingsGroup(
               context,
-              title: '支持',
+              title: '关于',
               children: [
                 _buildSettingItem(
                   context,
                   icon: Icons.help_outline,
-                  title: '使用帮助',
-                  onTap: () => _showHelpPage(context),
+                  title: '帮助中心',
+                  subtitle: '常见问题解答',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const HelpPage()),
+                  ),
                 ),
                 _buildSettingItem(
                   context,
                   icon: Icons.feedback_outlined,
                   title: '意见反馈',
-                  onTap: () => _showFeedbackPage(context),
+                  subtitle: '帮助我们改进产品',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const FeedbackPage()),
+                  ),
                 ),
                 _buildSettingItem(
                   context,
                   icon: Icons.info_outline,
-                  title: '关于应用',
-                  onTap: () => _showAboutPage(context),
+                  title: '关于临在',
+                  subtitle: '了解更多关于我们的信息',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const AboutPage()),
+                  ),
                 ),
                 _buildSettingItem(
                   context,
-                  icon: Icons.apps,
-                  title: '团队其它应用',
-                  onTap: () => _showTeamAppsPage(context),
+                  icon: Icons.apps_outlined,
+                  title: '我们的应用',
+                  subtitle: '探索更多应用',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const TeamAppsPage()),
+                  ),
+                ),
+                _buildSettingItem(
+                  context,
+                  icon: Icons.developer_mode,
+                  title: '开发者设置',
+                  subtitle: 'BLoC功能开关和调试选项',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const DeveloperSettingsPage()),
+                  ),
                 ),
               ],
             ),
@@ -132,101 +217,121 @@ class SettingsPage extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: authService.isLoggedIn
-            ? Row(
-                children: [
-                  // 用户头像，点击修改
-                  GestureDetector(
-                    onTap: () => _navigateToAvatarUpload(context),
-                    child: Stack(
+        child: BlocBuilder<ProfileBloc, ProfileState>(
+          builder: (context, profileState) {
+            final bool isLoggedIn = profileState is ProfileLoaded ? profileState.isLoggedIn : authService.isLoggedIn;
+            final String? displayName = profileState is ProfileLoaded ? profileState.displayName : authService.userName;
+            final String? phoneNumber = authService.phoneNumber;
+            final bool isUpdating = profileState is DisplayNameUpdating;
+            
+            return isLoggedIn
+                ? Row(
+                    children: [
+                      // 用户头像，点击修改
+                      GestureDetector(
+                        onTap: () => _navigateToAvatarUpload(context),
+                        child: Stack(
+                          children: [
+                            const UserAvatar(
+                              size: 60,
+                              borderRadius: 30,
+                            ),
+                            Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(context).primaryColor,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.edit,
+                                  color: Colors.white,
+                                  size: 12,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // 用户昵称，点击修改
+                            GestureDetector(
+                              onTap: () => _showDisplayNameDialog(context, displayName ?? ''),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      displayName ?? '用户${phoneNumber?.substring(7) ?? ''}',
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const Icon(Icons.edit, size: 16),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              phoneNumber != null
+                                  ? '手机号: ${_formatPhoneNumber(phoneNumber)}'
+                                  : '未绑定手机号',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  )
+                : InkWell(
+                    onTap: () => _navigateToLogin(context),
+                    child: Row(
                       children: [
+                        // 未登录的头像
                         const UserAvatar(
                           size: 60,
                           borderRadius: 30,
                         ),
-                        Positioned(
-                          bottom: 0,
-                          right: 0,
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).primaryColor,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.edit,
-                              color: Colors.white,
-                              size: 12,
-                            ),
+                        const SizedBox(width: 16),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '未登录',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                '登录以同步您的数据',
+                                style: TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
+                        const Icon(Icons.arrow_forward_ios, size: 16),
                       ],
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          authService.userName ??
-                              '用户${authService.phoneNumber?.substring(7) ?? ''}',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          authService.phoneNumber != null
-                              ? '手机号: ${_formatPhoneNumber(authService.phoneNumber!)}'
-                              : '未绑定手机号',
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              )
-            : InkWell(
-                onTap: () => _navigateToLogin(context),
-                child: Row(
-                  children: [
-                    // 未登录的头像
-                    const UserAvatar(
-                      size: 60,
-                      borderRadius: 30,
-                    ),
-                    const SizedBox(width: 16),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '未登录',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            '登录以同步您的数据',
-                            style: TextStyle(
-                              color: Colors.grey,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Icon(Icons.arrow_forward_ios, size: 16),
-                  ],
-                ),
-              ),
+                  );
+          },
+        ),
       ),
     );
   }
@@ -368,6 +473,58 @@ class SettingsPage extends StatelessWidget {
       MaterialPageRoute(builder: (context) => const TeamAppsPage()),
     );
   }
+  
+  void _showDeveloperSettingsPage(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const DeveloperSettingsPage()),
+    );
+  }
+
+  void _showDisplayNameDialog(BuildContext context, String currentDisplayName) {
+    final TextEditingController _displayNameController = TextEditingController(text: currentDisplayName);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('修改昵称'),
+        content: TextField(
+          controller: _displayNameController,
+          decoration: const InputDecoration(
+            hintText: '请输入新的昵称',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.black87,
+            ),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () {
+              final newDisplayName = _displayNameController.text.trim();
+              if (newDisplayName.isNotEmpty) {
+                context.read<ProfileBloc>().add(UpdateDisplayName(newDisplayName));
+                Navigator.pop(context);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('昵称不能为空')),
+                );
+              }
+            },
+            style: TextButton.styleFrom(
+              backgroundColor: Theme.of(context).primaryColor,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+  }
 
   void _showLogoutDialog(BuildContext context, AuthService authService) {
     showDialog(
@@ -400,5 +557,19 @@ class SettingsPage extends StatelessWidget {
         ],
       ),
     );
+  }
+  
+  /// 根据语言代码获取语言名称
+  String _getLanguageName(String languageCode) {
+    switch (languageCode) {
+      case 'zh_CN':
+        return '简体中文';
+      case 'en_US':
+        return 'English';
+      case 'zh_TW':
+        return '繁體中文';
+      default:
+        return '简体中文';
+    }
   }
 }

@@ -47,6 +47,9 @@ class GoalOperationMenu extends StatelessWidget {
   /// 添加子条目的回调函数
   final VoidCallback onAddSubGoal;
 
+  /// 查看子目标的回调函数
+  final VoidCallback onViewSubGoals;
+
   /// 设置自定义倒计时的回调函数
   final VoidCallback onToggleCustomCountdown;
 
@@ -85,6 +88,7 @@ class GoalOperationMenu extends StatelessWidget {
     required this.onAddSubGoal,
     required this.onToggleCustomCountdown,
     required this.hasCustomCountdown,
+    required this.onViewSubGoals,
     this.onToggleVideoSound,
     this.isMuted = false,
     this.onToggleVideoPlay,
@@ -100,155 +104,169 @@ class GoalOperationMenu extends StatelessWidget {
         Icons.more_vert,
         color: Colors.white,
       ),
+      color: Colors.white,
       itemBuilder: (context) => [
-        // 全屏视图下的选项
-        if (currentGoal != null) ...[
-          // 新增截止日期设置/删除选项
-          PopupMenuItem(
-            child: ListTile(
-              leading: Icon(currentGoal!.targetDate != null
-                  ? Icons.event_busy
-                  : Icons.event),
-              title:
-                  Text(currentGoal!.targetDate != null ? '删除截止日期' : '设置截止日期'),
+        // 状态变更选项
+        PopupMenuItem<String>(
+          value: 'status',
+          child: GoalOperationMenuItem(
+            icon: Icons.check_circle_outline,
+            text: '状态变更',
+            onTap: () {
+              Navigator.pop(context);
+              onStatusChange();
+            },
+          ),
+        ),
+        // 删除选项
+        PopupMenuItem<String>(
+          value: 'delete',
+          child: GoalOperationMenuItem(
+            icon: Icons.delete_outline,
+            text: '删除',
+            onTap: () {
+              Navigator.pop(context);
+              onDelete();
+            },
+          ),
+        ),
+        // 分享选项
+        PopupMenuItem<String>(
+          value: 'share',
+          child: GoalOperationMenuItem(
+            icon: Icons.share,
+            text: '分享',
+            onTap: () {
+              Navigator.pop(context);
+              onShare();
+            },
+          ),
+        ),
+        // 添加子目标选项
+        PopupMenuItem<String>(
+          value: 'add_sub_goal',
+          child: GoalOperationMenuItem(
+            icon: Icons.add_circle_outline,
+            text: '添加子目标',
+            onTap: () {
+              Navigator.pop(context);
+              onAddSubGoal();
+            },
+          ),
+        ),
+        // 查看子目标选项（仅当有子目标时显示）
+        if (currentGoal != null && currentGoal!.subGoals.isNotEmpty)
+          PopupMenuItem<String>(
+            value: 'view_sub_goals',
+            child: GoalOperationMenuItem(
+              icon: Icons.list,
+              text: '查看子目标 (${currentGoal!.subGoals.length})',
               onTap: () {
                 Navigator.pop(context);
-                onToggleDeadline();
+                onViewSubGoals();
               },
             ),
           ),
-
-          // 更改状态选项
-          PopupMenuItem(
-            child: ListTile(
-              leading: const Icon(Icons.update),
-              title: const Text('更改状态'),
+        // 截止日期选项
+        PopupMenuItem<String>(
+          value: 'deadline',
+          child: GoalOperationMenuItem(
+            icon: Icons.calendar_today,
+            text: '设置截止日期',
+            onTap: () {
+              Navigator.pop(context);
+              onToggleDeadline();
+            },
+          ),
+        ),
+        // 倒计时显示选项
+        PopupMenuItem<String>(
+          value: 'countdown',
+          child: GoalOperationMenuItem(
+            icon: showCountdown ? Icons.timer_off : Icons.timer,
+            text: currentGoal?.targetDate != null
+                ? (showCountdown ? '隐藏倒计时' : '显示倒计时')
+                : (hasCustomCountdown ? '关闭倒计时' : '设置倒计时'),
+            onTap: () {
+              Navigator.pop(context);
+              if (currentGoal?.targetDate != null) {
+                onToggleCountdown();
+              } else {
+                onToggleCustomCountdown();
+              }
+            },
+          ),
+        ),
+        // 时间显示选项（仅当有截止日期时显示）
+        if (currentGoal?.targetDate != null)
+          PopupMenuItem<String>(
+            value: 'time',
+            child: GoalOperationMenuItem(
+              icon: showTime
+                  ? Icons.access_time_filled
+                  : Icons.access_time_outlined,
+              text: showTime ? '隐藏截止日期' : '显示截止日期',
               onTap: () {
                 Navigator.pop(context);
-                onStatusChange();
+                onToggleTime();
               },
             ),
           ),
-
-          // 删除选项
-          PopupMenuItem(
-            child: ListTile(
-              leading: const Icon(Icons.delete),
-              title: const Text('删除'),
+        // 标题显示选项
+        PopupMenuItem<String>(
+          value: 'title',
+          child: GoalOperationMenuItem(
+            icon: showTitle ? Icons.title : Icons.title_outlined,
+            text: showTitle ? '隐藏文本' : '显示文本',
+            onTap: () {
+              Navigator.pop(context);
+              onToggleTitle();
+            },
+          ),
+        ),
+        // 描述显示选项
+        PopupMenuItem<String>(
+          value: 'description',
+          child: GoalOperationMenuItem(
+            icon: showDescription ? Icons.info_outline : Icons.info,
+            text: showDescription ? '关闭描述' : '显示描述',
+            onTap: () {
+              Navigator.pop(context);
+              onToggleDescription();
+            },
+          ),
+        ),
+        // 视频声音控制（仅当有视频时显示）
+        if (currentGoal?.hasVideo == true && onToggleVideoSound != null)
+          PopupMenuItem<String>(
+            value: 'video_sound',
+            child: GoalOperationMenuItem(
+              icon: isMuted ? Icons.volume_up : Icons.volume_off,
+              text: isMuted ? '打开声音' : '关闭声音',
               onTap: () {
                 Navigator.pop(context);
-                onDelete();
+                onToggleVideoSound!();
               },
             ),
           ),
-
-          // 分享选项
-          PopupMenuItem(
-            child: ListTile(
-              leading: const Icon(Icons.share),
-              title: const Text('分享'),
+        // 视频播放控制（仅当有视频时显示）
+        if (currentGoal?.hasVideo == true && onToggleVideoPlay != null)
+          PopupMenuItem<String>(
+            value: 'video_play',
+            child: GoalOperationMenuItem(
+              icon: isPlaying ? Icons.pause : Icons.play_arrow,
+              text: isPlaying ? '暂停播放' : '继续播放',
               onTap: () {
                 Navigator.pop(context);
-                onShare();
+                onToggleVideoPlay!();
               },
             ),
           ),
-
-          // 新增子条目选项
-          PopupMenuItem(
-            child: ListTile(
-              leading: const Icon(Icons.add),
-              title: const Text('新增子条目'),
-              onTap: () {
-                Navigator.pop(context);
-                onAddSubGoal();
-              },
-            ),
-          ),
-
-          // 添加倒计时显示开关，区分有无截止日期的情况
-          PopupMenuItem(
-            child: ListTile(
-              leading: Icon(showCountdown ? Icons.timer_off : Icons.timer),
-              title: Text(currentGoal!.targetDate != null
-                  ? (showCountdown ? '隐藏倒计时' : '显示倒计时')
-                  : (hasCustomCountdown ? '关闭倒计时' : '设置倒计时')),
-              onTap: () {
-                Navigator.pop(context);
-                if (currentGoal!.targetDate != null) {
-                  onToggleCountdown();
-                } else {
-                  onToggleCustomCountdown();
-                }
-              },
-            ),
-          ),
-
-          // 添加时间显示开关，仅当有截止日期时显示
-          if (currentGoal?.targetDate != null)
-            PopupMenuItem(
-              child: ListTile(
-                leading: Icon(showTime
-                    ? Icons.access_time_filled
-                    : Icons.access_time_outlined),
-                title: Text(showTime ? '隐藏截止日期' : '显示截止日期'),
-                onTap: () {
-                  Navigator.pop(context);
-                  onToggleTime();
-                },
-              ),
-            ),
-
-          // 添加文本显示开关
-          PopupMenuItem(
-            child: ListTile(
-              leading: Icon(showTitle ? Icons.title : Icons.title_outlined),
-              title: Text(showTitle ? '隐藏文本' : '显示文本'),
-              onTap: () {
-                Navigator.pop(context);
-                onToggleTitle();
-              },
-            ),
-          ),
-
-          // 添加描述显示开关
-          PopupMenuItem(
-            child: ListTile(
-              leading: Icon(showDescription ? Icons.info_outline : Icons.info),
-              title: Text(showDescription ? '关闭描述' : '显示描述'),
-              onTap: () {
-                Navigator.pop(context);
-                onToggleDescription();
-              },
-            ),
-          ),
-
-          // 视频控制选项，仅当有视频时显示
-          if (currentGoal?.hasVideo == true && onToggleVideoSound != null)
-            PopupMenuItem(
-              child: ListTile(
-                leading: Icon(isMuted ? Icons.volume_up : Icons.volume_off),
-                title: Text(isMuted ? '打开声音' : '关闭声音'),
-                onTap: () {
-                  Navigator.pop(context);
-                  onToggleVideoSound!();
-                },
-              ),
-            ),
-
-          if (currentGoal?.hasVideo == true && onToggleVideoPlay != null)
-            PopupMenuItem(
-              child: ListTile(
-                leading: Icon(isPlaying ? Icons.pause : Icons.play_arrow),
-                title: Text(isPlaying ? '暂停播放' : '继续播放'),
-                onTap: () {
-                  Navigator.pop(context);
-                  onToggleVideoPlay!();
-                },
-              ),
-            ),
-        ],
       ],
+      onSelected: (String value) {
+        // 这里可以处理菜单项选择事件
+        // 但我们已经在每个菜单项的onTap中处理了
+      },
     );
   }
 }

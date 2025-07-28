@@ -22,13 +22,13 @@ class ImagePickerDialog extends StatelessWidget {
       'assets/images/default/default2.jpg',
       'assets/images/default/default3.jpg',
       'assets/images/default/default4.png',
+      'assets/images/default/default5.png',
+      'assets/images/default/default6.png',
+      'assets/images/default/default7.png',
     ];
 
     // 预留的会员图片
     final vipImages = [
-      'assets/images/default/default5.png',
-      'assets/images/default/default6.png',
-      'assets/images/default/default7.png',
       'assets/images/default/default8.png',
     ];
 

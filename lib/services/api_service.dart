@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:io'; // Added for File
 
 class ApiService {
   // 单例模式
@@ -24,6 +25,8 @@ class ApiService {
 
   // 用户信息接口
   static const String _getUserInfoEndpoint = '/user/get';
+  static const String _updateUserProfileEndpoint = '/user/update';
+  static const String _uploadAvatarEndpoint = '/user/avatar/upload';
 
   // HTTP客户端
   final http.Client _client = http.Client();
@@ -403,5 +406,102 @@ class ApiService {
     await prefs.remove('member_level');
     await prefs.remove('member_level_desc');
     await prefs.remove('member_valid_desc');
+  }
+  
+  // 上传头像
+  Future<Map<String, dynamic>> uploadAvatar(File imageFile) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) {
+        return {'success': false, 'message': '未登录', 'data': null};
+      }
+      
+      // 如果使用本地模拟数据
+      if (_useMockData) {
+        debugPrint('使用模拟数据：上传头像');
+        // 模拟等待1秒
+        await Future.delayed(const Duration(seconds: 1));
+        
+        // 模拟头像URL
+        final mockAvatarUrl = 'https://example.com/avatar/${DateTime.now().millisecondsSinceEpoch}.jpg';
+        
+        // 更新本地存储的头像URL
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('user_avatar', mockAvatarUrl);
+        
+        return {
+          'success': true,
+          'message': '头像上传成功',
+          'data': {
+            'avatarUrl': mockAvatarUrl
+          }
+        };
+      }
+      
+      // 创建multipart请求
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$_baseUrl$_uploadAvatarEndpoint'),
+      );
+      
+      // 添加头像文件
+      request.files.add(await http.MultipartFile.fromPath(
+        'avatar',
+        imageFile.path,
+      ));
+      
+      // 添加头信息
+      final headers = await _getHeadersAsync(token: token);
+      request.headers.addAll(headers);
+      
+      // 发送请求
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+      
+      return _handleResponse(response);
+    } catch (e) {
+      debugPrint('上传头像异常: $e');
+      return {'success': false, 'message': '网络错误: $e', 'data': null};
+    }
+  }
+  
+  // 更新用户资料
+  Future<Map<String, dynamic>> updateUserProfile(Map<String, dynamic> profileData) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) {
+        return {'success': false, 'message': '未登录', 'data': null};
+      }
+      
+      // 如果使用本地模拟数据
+      if (_useMockData) {
+        debugPrint('使用模拟数据：更新用户资料 $profileData');
+        // 模拟等待1秒
+        await Future.delayed(const Duration(seconds: 1));
+        
+        // 更新本地存储
+        final prefs = await SharedPreferences.getInstance();
+        if (profileData.containsKey('displayName')) {
+          await prefs.setString('user_name', profileData['displayName']);
+        }
+        
+        return {
+          'success': true,
+          'message': '用户资料更新成功',
+          'data': profileData
+        };
+      }
+      
+      final response = await _client.post(
+        Uri.parse('$_baseUrl$_updateUserProfileEndpoint'),
+        headers: await _getHeadersAsync(token: token),
+        body: jsonEncode(profileData),
+      );
+      
+      return _handleResponse(response);
+    } catch (e) {
+      debugPrint('更新用户资料异常: $e');
+      return {'success': false, 'message': '网络错误: $e', 'data': null};
+    }
   }
 }

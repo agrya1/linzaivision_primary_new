@@ -4,12 +4,8 @@ import 'package:linzaivision_primary/widgets/common/goal_card.dart';
 import 'package:intl/intl.dart';
 import 'package:linzaivision_primary/widgets/pickers/image_picker_dialog.dart';
 import 'package:linzaivision_primary/widgets/pickers/membership_prompt_dialog.dart';
-import 'package:provider/provider.dart';
-import 'package:linzaivision_primary/services/auth_service.dart';
-import 'dart:math';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:path/path.dart';
 
 class TimelineView extends StatefulWidget {
   final List<Goal> goals;

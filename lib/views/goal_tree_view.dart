@@ -404,6 +404,7 @@ class _GoalTreeViewState extends State<GoalTreeView> {
               child: InkWell(
                 onTap: () {
                   if (widget.onGoalSelect != null) {
+                    print('【GoalTreeView】点击目标: ID=${goal.id}, 标题=${goal.title}, 父ID=${goal.parentId}, 是否子目标=${goal.parentId != null}, 子目标数量=${goal.subGoals.length}');
                     widget.onGoalSelect!(goal);
                   }
                 },

@@ -90,7 +90,7 @@ class DatabaseHelper {
       await db.execute(
           'ALTER TABLE goals ADD COLUMN has_custom_countdown INTEGER NOT NULL DEFAULT 0');
 
-      debugPrint('数据库升级完成：从版本 $oldVersion 到版本 $newVersion');
+      print('数据库升级完成：从版本 $oldVersion 到版本 $newVersion');
     }
   }
 
@@ -108,6 +108,8 @@ class DatabaseHelper {
 
   // 插入目标
   Future<int> insertGoal(Goal goal) async {
+    print('【DatabaseHelper】开始插入目标: 标题=${goal.title}, 父ID=${goal.parentId}');
+
     if (kIsWeb) {
       // Web 平台使用 localStorage
       final goals = await _getWebGoals();
@@ -117,11 +119,16 @@ class DatabaseHelper {
       goal.id = id;
       goals.add(goal);
       await _saveWebGoals(goals);
+      print(
+          '【DatabaseHelper】Web平台插入目标成功: ID=$id, 标题=${goal.title}, 父ID=${goal.parentId}');
       return id;
     }
 
     final db = await database;
-    return await db.insert('goals', goal.toMap());
+    final id = await db.insert('goals', goal.toMap());
+    print(
+        '【DatabaseHelper】插入目标成功: ID=$id, 标题=${goal.title}, 父ID=${goal.parentId}');
+    return id;
   }
 
   // 获取目标列表
@@ -143,6 +150,42 @@ class DatabaseHelper {
       orderBy: 'created_time ASC', // 按创建时间升序排序
     );
     return List.generate(maps.length, (i) => Goal.fromMap(maps[i]));
+  }
+
+  // 获取单个目标
+  Future<Goal?> getGoal(int id) async {
+    print('【DatabaseHelper】开始获取目标，ID: $id');
+
+    if (kIsWeb) {
+      // Web 平台从 localStorage 获取
+      final goals = await _getWebGoals();
+      try {
+        final goal = goals.firstWhere((g) => g.id == id);
+        print('【DatabaseHelper】Web平台成功获取目标，ID: ${goal.id}, 标题: ${goal.title}');
+        return goal;
+      } catch (e) {
+        print('【DatabaseHelper】Web平台未找到目标，ID: $id, 错误: $e');
+        return null;
+      }
+    }
+
+    final db = await database;
+    print('【DatabaseHelper】执行SQL查询: SELECT * FROM goals WHERE id = $id');
+    final List<Map<String, dynamic>> maps = await db.query(
+      'goals',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+
+    if (maps.isEmpty) {
+      print('【DatabaseHelper】未找到目标，ID: $id');
+      return null;
+    }
+
+    final goal = Goal.fromMap(maps.first);
+    print('【DatabaseHelper】成功获取目标，ID: ${goal.id}, 标题: ${goal.title}');
+    return goal;
   }
 
   // 更新目标
@@ -197,7 +240,7 @@ class DatabaseHelper {
           return jsonList.map((json) => Goal.fromJson(json)).toList();
         }
       } catch (e) {
-        debugPrint('Error reading from localStorage: $e');
+        print('Error reading from localStorage: $e');
       }
     }
     return [];
@@ -209,13 +252,15 @@ class DatabaseHelper {
         final jsonList = goals.map((g) => g.toJson()).toList();
         WebStorage.saveData('goals', jsonEncode(jsonList));
       } catch (e) {
-        debugPrint('Error saving to localStorage: $e');
+        print('Error saving to localStorage: $e');
       }
     }
   }
 
   // 获取目标树
   Future<List<Goal>> getGoalTree() async {
+    print('【DatabaseHelper】开始获取目标树');
+
     if (kIsWeb) {
       final goals = await _getWebGoals();
       return _buildGoalTreeFromList(goals);
@@ -229,11 +274,26 @@ class DatabaseHelper {
     );
     final goals = maps.map((map) => Goal.fromMap(map)).toList();
 
+    print('【DatabaseHelper】从数据库获取了 ${goals.length} 个目标');
+
+    // 记录父子关系统计
+    final Map<int?, int> parentCounts = {};
+    for (var goal in goals) {
+      parentCounts[goal.parentId] = (parentCounts[goal.parentId] ?? 0) + 1;
+    }
+
+    print('【DatabaseHelper】目标父子关系统计:');
+    parentCounts.forEach((parentId, count) {
+      print('【DatabaseHelper】父ID=${parentId ?? "null"} 有 $count 个子目标');
+    });
+
     return _buildGoalTreeFromList(goals);
   }
 
   // 从目标列表构建目标树
   List<Goal> _buildGoalTreeFromList(List<Goal> allGoals) {
+    print('【DatabaseHelper】开始构建目标树，总计 ${allGoals.length} 个目标');
+
     // 清空所有目标的子目标列表，确保不会累积
     for (var goal in allGoals) {
       goal.subGoals = [];
@@ -245,22 +305,42 @@ class DatabaseHelper {
         if (goal.id != null) goal.id: goal
     };
 
+    print('【DatabaseHelper】创建ID映射，共 ${idToGoalMap.length} 个映射');
+
     // 创建父子关系映射
     final List<Goal> rootGoals = [];
+    final Map<int?, List<int?>> parentChildMap = {};
+
     for (var goal in allGoals) {
       if (goal.parentId == null) {
         // 这是一个根目标
         rootGoals.add(goal);
+        print('【DatabaseHelper】添加根目标: ID=${goal.id}, 标题=${goal.title}');
       } else if (idToGoalMap.containsKey(goal.parentId)) {
         // 找到父目标并添加到其子目标列表中
         idToGoalMap[goal.parentId]!.subGoals.add(goal);
+
+        // 记录父子关系
+        parentChildMap[goal.parentId] = parentChildMap[goal.parentId] ?? [];
+        parentChildMap[goal.parentId]!.add(goal.id);
+
+        print(
+            '【DatabaseHelper】添加子目标: ID=${goal.id}, 标题=${goal.title}, 父ID=${goal.parentId}');
       } else {
         // 如果找不到父目标，将其作为根目标处理
-        debugPrint('警告: 目标ID ${goal.id} 的父ID ${goal.parentId} 无效，作为根目标处理');
+        print(
+            '【DatabaseHelper】警告: 目标ID ${goal.id} 的父ID ${goal.parentId} 无效，作为根目标处理');
         goal.parentId = null; // 重置父ID
         rootGoals.add(goal);
       }
     }
+
+    // 记录父子关系统计
+    print('【DatabaseHelper】父子关系统计:');
+    parentChildMap.forEach((parentId, childIds) {
+      print(
+          '【DatabaseHelper】父ID=$parentId 有 ${childIds.length} 个子目标: $childIds');
+    });
 
     // 对每个父节点下的子目标列表进行排序 - 按创建时间升序排序
     for (var goal in allGoals) {
@@ -272,7 +352,8 @@ class DatabaseHelper {
     // 对根目标列表排序
     rootGoals.sort((a, b) => a.createdTime.compareTo(b.createdTime));
 
-    debugPrint('构建的目标树: ${rootGoals.length} 个根目标，总计 ${allGoals.length} 个目标');
+    print(
+        '【DatabaseHelper】构建的目标树: ${rootGoals.length} 个根目标，总计 ${allGoals.length} 个目标');
     return rootGoals;
   }
 
@@ -299,7 +380,7 @@ class DatabaseHelper {
         final goals = jsonList.map((json) => Goal.fromJson(json)).toList();
         await _saveWebGoals(goals);
       } catch (e) {
-        debugPrint('Error importing data: $e');
+        print('Error importing data: $e');
         rethrow;
       }
       return;
@@ -354,7 +435,7 @@ class DatabaseHelper {
           hasCustomCountdownDays &&
           hasHasCustomCountdown;
     } catch (e) {
-      debugPrint('验证迁移失败: $e');
+      print('验证迁移失败: $e');
       return false;
     }
   }
@@ -386,7 +467,7 @@ class DatabaseHelper {
       }
     });
 
-    debugPrint('批量插入完成: ${goals.length} 个目标');
+    print('批量插入完成: ${goals.length} 个目标');
   }
 
   // 批量插入目标树（处理父子关系）
@@ -420,7 +501,7 @@ class DatabaseHelper {
       }
     });
 
-    debugPrint('批量插入目标树完成: ${rootGoals.length} 个根目标');
+    print('批量插入目标树完成: ${rootGoals.length} 个根目标');
   }
 
   // 将目标树展平为列表

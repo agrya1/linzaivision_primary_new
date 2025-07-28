@@ -38,8 +38,14 @@ class GoalRepositoryImpl implements GoalRepository {
   
   @override
   Future<Goal?> getGoal(int id) async {
-    final goals = await _dbHelper.getGoals();
-    return goals.where((goal) => goal.id == id).firstOrNull;
+    print('【GoalRepository】开始获取目标，ID: $id');
+    final goal = await _dbHelper.getGoal(id);
+    if (goal != null) {
+      print('【GoalRepository】成功获取目标，ID: ${goal.id}, 标题: ${goal.title}');
+    } else {
+      print('【GoalRepository】未找到目标，ID: $id');
+    }
+    return goal;
   }
   
   @override

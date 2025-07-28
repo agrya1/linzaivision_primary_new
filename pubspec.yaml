@@ -36,6 +36,7 @@ dependencies:
   # 状态管理
   flutter_bloc: ^8.1.6
   equatable: ^2.0.5
+  flutter_secure_storage: ^4.2.1
   
 dev_dependencies:
   flutter_test:

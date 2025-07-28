@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import '../models/goal.dart';
 import 'package:intl/intl.dart';
-import '../widgets/menus/goal_menus.dart';
 import 'package:video_player/video_player.dart';
-import 'dart:math';
 import 'package:path/path.dart' as path;
 
 class FullScreenView extends StatefulWidget {

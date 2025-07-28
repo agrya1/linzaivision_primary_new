@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  // 主题色
-  static const Color primaryColor = Colors.white;
-  static const Color accentColor = Color(0xFF2196F3);
-  static const Color textColorPrimary = Color(0xFF333333);
-  static const Color textColorSecondary = Color(0xFF666666);
-  static const Color background = Colors.white;
+  // 亮色主题色
+  static const Color primaryColorLight = Colors.white;
+  static const Color accentColorLight = Color(0xFF2196F3);
+  static const Color textColorPrimaryLight = Color(0xFF333333);
+  static const Color textColorSecondaryLight = Color(0xFF666666);
+  static const Color backgroundLight = Colors.white;
+  
+  // 暗色主题色
+  static const Color primaryColorDark = Color(0xFF121212);
+  static const Color accentColorDark = Color(0xFF64B5F6);
+  static const Color textColorPrimaryDark = Color(0xFFE0E0E0);
+  static const Color textColorSecondaryDark = Color(0xFFAAAAAA);
+  static const Color backgroundDark = Color(0xFF121212);
 
   // 默认字体族
   static const String defaultFontFamily = 'STZhongsong';
@@ -15,7 +22,7 @@ class AppTheme {
   static TextStyle createTextStyle({
     required double fontSize,
     FontWeight fontWeight = FontWeight.normal,
-    Color color = textColorPrimary,
+    Color color = textColorPrimaryLight,
     String? fontFamily,
   }) {
     return TextStyle(
@@ -26,46 +33,67 @@ class AppTheme {
     );
   }
 
-  // 预定义文本样式
-  static final TextStyle headingLarge = createTextStyle(
+  // 预定义文本样式 - 亮色主题
+  static TextStyle headingLarge({bool isDark = false}) => createTextStyle(
     fontSize: 28.0,
     fontWeight: FontWeight.w500,
+    color: isDark ? textColorPrimaryDark : textColorPrimaryLight,
   );
 
-  static final TextStyle headingMedium = createTextStyle(
+  static TextStyle headingMedium({bool isDark = false}) => createTextStyle(
     fontSize: 24.0,
     fontWeight: FontWeight.w500,
+    color: isDark ? textColorPrimaryDark : textColorPrimaryLight,
   );
 
-  static final TextStyle headingSmall = createTextStyle(
+  static TextStyle headingSmall({bool isDark = false}) => createTextStyle(
     fontSize: 20.0,
     fontWeight: FontWeight.w500,
+    color: isDark ? textColorPrimaryDark : textColorPrimaryLight,
   );
 
-  static final TextStyle bodyLarge = createTextStyle(
+  static TextStyle bodyLarge({bool isDark = false}) => createTextStyle(
     fontSize: 16.0,
     fontWeight: FontWeight.normal,
+    color: isDark ? textColorPrimaryDark : textColorPrimaryLight,
   );
 
-  static final TextStyle bodyMedium = createTextStyle(
+  static TextStyle bodyMedium({bool isDark = false}) => createTextStyle(
     fontSize: 14.0,
     fontWeight: FontWeight.normal,
+    color: isDark ? textColorPrimaryDark : textColorPrimaryLight,
   );
 
-  static final TextStyle bodySmall = createTextStyle(
+  static TextStyle bodySmall({bool isDark = false}) => createTextStyle(
     fontSize: 12.0,
     fontWeight: FontWeight.normal,
+    color: isDark ? textColorSecondaryDark : textColorSecondaryLight,
   );
 
   // 创建应用主题
-  static ThemeData createTheme() {
+  static ThemeData createTheme({bool isDark = false}) {
+    final primaryColor = isDark ? primaryColorDark : primaryColorLight;
+    final accentColor = isDark ? accentColorDark : accentColorLight;
+    final textColorPrimary = isDark ? textColorPrimaryDark : textColorPrimaryLight;
+    final background = isDark ? backgroundDark : backgroundLight;
+    
     return ThemeData(
+      brightness: isDark ? Brightness.dark : Brightness.light,
       primaryColor: primaryColor,
-      colorScheme: const ColorScheme.light(
-        primary: primaryColor,
-        secondary: accentColor,
-      ),
-      appBarTheme: const AppBarTheme(
+      colorScheme: isDark
+          ? ColorScheme.dark(
+              primary: primaryColor,
+              secondary: accentColor,
+              surface: backgroundDark,
+              background: backgroundDark,
+            )
+          : ColorScheme.light(
+              primary: primaryColor,
+              secondary: accentColor,
+              surface: backgroundLight,
+              background: backgroundLight,
+            ),
+      appBarTheme: AppBarTheme(
         backgroundColor: primaryColor,
         elevation: 0,
         iconTheme: IconThemeData(color: textColorPrimary),
@@ -79,12 +107,12 @@ class AppTheme {
       scaffoldBackgroundColor: background,
       fontFamily: defaultFontFamily,
       textTheme: TextTheme(
-        headlineLarge: headingLarge,
-        headlineMedium: headingMedium,
-        headlineSmall: headingSmall,
-        bodyLarge: bodyLarge,
-        bodyMedium: bodyMedium,
-        bodySmall: bodySmall,
+        headlineLarge: headingLarge(isDark: isDark),
+        headlineMedium: headingMedium(isDark: isDark),
+        headlineSmall: headingSmall(isDark: isDark),
+        bodyLarge: bodyLarge(isDark: isDark),
+        bodyMedium: bodyMedium(isDark: isDark),
+        bodySmall: bodySmall(isDark: isDark),
       ),
     );
   }

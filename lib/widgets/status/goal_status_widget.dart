@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../models/goal.dart';
-import 'package:intl/intl.dart';
 
 class GoalStatusWidget extends StatefulWidget {
   final Goal goal;

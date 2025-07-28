@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'dart:async'; // 引入Timer
 import 'package:provider/provider.dart';
 import 'package:linzaivision_primary/services/auth_service.dart'; // 引入认证服务
+import 'package:linzaivision_primary/repository/settings_repository.dart'; // 引入设置仓库
+import 'auth_page_bloc_adapter.dart'; // 引入BLoC适配器
 
 /// 验证码登录页面
 class VerificationCodeLoginPage extends StatefulWidget {
@@ -27,6 +29,15 @@ class _VerificationCodeLoginPageState extends State<VerificationCodeLoginPage> {
 
   // AuthService实例
   late AuthService _authService;
+  
+  // 设置仓库实例
+  late SettingsRepository _settingsRepository;
+  
+  // BLoC适配器
+  AuthPageBlocAdapter? _blocAdapter;
+  
+  // 是否使用BLoC模式
+  bool _useBlocMode = false;
 
   @override
   void initState() {
@@ -34,6 +45,8 @@ class _VerificationCodeLoginPageState extends State<VerificationCodeLoginPage> {
     // 延迟到下一帧获取provider
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _authService = Provider.of<AuthService>(context, listen: false);
+      _settingsRepository = Provider.of<SettingsRepository>(context, listen: false);
+      _loadBlocModePreference();
     });
 
     _phoneController.addListener(() {
@@ -43,6 +56,27 @@ class _VerificationCodeLoginPageState extends State<VerificationCodeLoginPage> {
         _canGetCode = phone.length == 11 && _timer == null;
       });
     });
+  }
+  
+  // 加载BLoC模式偏好设置
+  Future<void> _loadBlocModePreference() async {
+    try {
+      final useBlocMode = await _settingsRepository.getUseBlocMode();
+      setState(() {
+        _useBlocMode = useBlocMode;
+        
+        // 如果启用BLoC模式，创建适配器
+        if (_useBlocMode) {
+          _blocAdapter = AuthPageBlocAdapter(
+            context,
+            executeMode: true,
+            logLevel: 2,
+          );
+        }
+      });
+    } catch (e) {
+      debugPrint('加载BLoC模式偏好设置失败: $e');
+    }
   }
 
   @override
@@ -128,9 +162,28 @@ class _VerificationCodeLoginPageState extends State<VerificationCodeLoginPage> {
     FocusScope.of(context).unfocus();
 
     try {
-      // 调用验证码登录
-      final success = await _authService.loginWithCode(
-          _phoneController.text, _codeController.text);
+      bool success = false;
+      
+      // 根据模式选择登录方式
+      if (_useBlocMode && _blocAdapter != null) {
+        // 使用BLoC模式
+        success = await _blocAdapter!.loginWithCode(
+          phone: _phoneController.text,
+          code: _codeController.text,
+          onSuccess: (user) {
+            debugPrint('BLoC模式登录成功: ${user.username}');
+          },
+          onError: (error) {
+            debugPrint('BLoC模式登录失败: $error');
+          },
+        );
+      } else {
+        // 使用传统模式
+        success = await _authService.loginWithCode(
+          _phoneController.text,
+          _codeController.text,
+        );
+      }
 
       if (!mounted) return;
 
@@ -363,9 +416,9 @@ class _VerificationCodeLoginPageState extends State<VerificationCodeLoginPage> {
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 ),
               )
-            : const Text(
-                '登录 / 注册',
-                style: TextStyle(
+            : Text(
+                '登录 / 注册 ${_useBlocMode ? "(BLoC模式)" : ""}',
+                style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),
