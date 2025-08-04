@@ -37,6 +37,9 @@ dependencies:
   flutter_bloc: ^8.1.6
   equatable: ^2.0.5
   flutter_secure_storage: ^4.2.1
+
+  # 应用信息
+  package_info_plus: ^8.0.0
   
 dev_dependencies:
   flutter_test:
@@ -45,6 +48,8 @@ dev_dependencies:
   mockito: ^5.4.4
   build_runner: ^2.4.8
   flutter_launcher_icons: ^0.14.3
+  bloc_test: ^9.1.7
+  mocktail: ^1.0.4
 
 flutter_icons:
   android: true

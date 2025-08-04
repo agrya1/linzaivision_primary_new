@@ -10,9 +10,12 @@ import 'package:linzaivision_primary/services/api_service.dart';
 import 'package:linzaivision_primary/services/storage_service.dart';
 import 'package:linzaivision_primary/services/shared_prefs_storage_service.dart';
 import 'package:linzaivision_primary/bloc/goal/goal_bloc.dart';
+import 'package:linzaivision_primary/bloc/app/app_bloc.dart';
+import 'package:linzaivision_primary/bloc/app/app_event.dart';
 import 'package:linzaivision_primary/repository/goal_repository.dart';
 import 'package:linzaivision_primary/database/database_helper.dart';
 import 'package:linzaivision_primary/utils/error_handler.dart';
+import 'package:linzaivision_primary/repositories/repository_provider.dart';
 import 'repository/explore_repository.dart';
 import 'repository/search_repository.dart';
 import 'repository/auth_repository.dart';
@@ -47,17 +50,17 @@ Future<void> main() async {
 
   // 初始化SharedPreferences
   final prefs = await SharedPreferences.getInstance();
-  
+
   // 创建StorageService实例
   final storageService = SharedPrefsStorageService(prefs);
 
   // 初始化路由分析服务
   final routeAnalytics = RouteAnalytics();
   routeAnalytics.init(storageService);
-  
+
   // 创建路由参数中间件
   final routeParamsMiddleware = RouteParamsMiddleware();
-  
+
   // 为目标详情页添加参数验证器
   routeParamsMiddleware.addValidator(AppRoutes.goalDetails, (params) {
     if (params is! Map<String, dynamic> || !params.containsKey('goalId')) {
@@ -69,7 +72,7 @@ Future<void> main() async {
     }
     return ValidationResult.valid();
   });
-  
+
   // 添加路由中间件
   AppRouter.addMiddleware(RouteLoggerMiddleware());
   AppRouter.addMiddleware(AnalyticsMiddleware(routeAnalytics));
@@ -90,23 +93,35 @@ Future<void> main() async {
 
 class MyApp extends StatelessWidget {
   final StorageService storageService;
-  
+
   const MyApp({super.key, required this.storageService});
 
   @override
   Widget build(BuildContext context) {
     // 创建API服务实例 - 确保全局单例
     final apiService = ApiService();
-    
+
     // 创建数据库助手实例
     final databaseHelper = DatabaseHelper(isTest: false);
-    
-    // 创建仓库实例
-    final goalRepository = GoalRepositoryImpl(databaseHelper);
-    final exploreRepository = ExploreRepositoryImpl();
-    final searchRepository = SearchRepositoryImpl(databaseHelper);
-    final settingsRepository = SettingsRepositoryImpl(storageService);
-    
+
+    // 创建AuthService实例
+    final authService = AuthService();
+
+    // 初始化Repository提供者
+    AppRepositoryProvider.instance.initialize(
+      databaseHelper: databaseHelper,
+      storageService: storageService,
+      authService: authService,
+      apiService: apiService,
+    );
+
+    // 从Repository提供者获取仓库实例
+    final repositoryProvider = AppRepositoryProvider.instance;
+    final goalRepository = repositoryProvider.goalRepository;
+    final exploreRepository = repositoryProvider.exploreRepository;
+    final searchRepository = repositoryProvider.searchRepository;
+    final settingsRepository = repositoryProvider.settingsRepository;
+
     // 创建路由观察者
     final routeObserver = AppRouteObserver([
       RouteLoggerMiddleware(),
@@ -133,12 +148,8 @@ class MyApp extends StatelessWidget {
           create: (_) => AuthService(),
         ),
         // 提供AuthRepository
-        Provider<AuthRepository>(
-          create: (context) => AuthRepositoryImpl(
-            context.read<AuthService>(),
-            context.read<StorageService>(),
-          ),
-        ),
+        Provider<AuthRepository>.value(
+            value: repositoryProvider.authRepository),
         // 提供路由分析服务
         Provider<RouteAnalytics>.value(value: RouteAnalytics()),
         // 提供导航服务
@@ -156,7 +167,8 @@ class MyApp extends StatelessWidget {
           ),
         ),
         BlocProvider<SearchBloc>(
-          create: (context) => SearchBloc(repository: context.read<SearchRepository>()),
+          create: (context) =>
+              SearchBloc(repository: context.read<SearchRepository>()),
         ),
         // 提供AuthBloc
         BlocProvider<AuthBloc>(
@@ -171,13 +183,8 @@ class MyApp extends StatelessWidget {
           )..add(LoadSettings()), // 应用启动时加载设置
         ),
         // 提供ProfileRepository
-        Provider<ProfileRepository>(
-          create: (context) => ProfileRepositoryImpl(
-            context.read<AuthService>(),
-            context.read<StorageService>(),
-            context.read<ApiService>(),
-          ),
-        ),
+        Provider<ProfileRepository>.value(
+            value: repositoryProvider.profileRepository),
         // 提供ProfileBloc
         BlocProvider<ProfileBloc>(
           create: (context) => ProfileBloc(
@@ -189,20 +196,30 @@ class MyApp extends StatelessWidget {
             goalRepository: context.read<GoalRepository>(),
           ),
         ),
+        // 提供AppBloc - 应用级状态管理
+        BlocProvider<AppBloc>(
+          create: (context) => AppBloc(
+            goalRepository: context.read<GoalRepository>(),
+            authService: context.read<AuthService>(),
+            storageService: context.read<StorageService>(),
+          )..add(const InitializeApp()), // 应用启动时初始化
+        ),
       ],
       child: BlocBuilder<SettingsBloc, SettingsState>(
         builder: (context, settingsState) {
           // 根据设置状态决定主题
           ThemeMode themeMode = ThemeMode.system;
-          
+
           if (settingsState is SettingsLoaded) {
             if (settingsState.followSystemTheme) {
               themeMode = ThemeMode.system;
             } else {
-              themeMode = settingsState.themeMode == 'dark' ? ThemeMode.dark : ThemeMode.light;
+              themeMode = settingsState.themeMode == 'dark'
+                  ? ThemeMode.dark
+                  : ThemeMode.light;
             }
           }
-          
+
           return ErrorBoundary(
             child: MaterialApp(
               title: '临在意识',

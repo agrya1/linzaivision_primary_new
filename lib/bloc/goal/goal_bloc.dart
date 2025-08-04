@@ -29,6 +29,25 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
     on<ToggleGoalStatus>(_onToggleGoalStatus);
     on<LoadSpecificGoal>(_onLoadSpecificGoal); // 添加对LoadSpecificGoal事件的处理
     on<SaveInitialGoals>(_onSaveInitialGoals); // 添加对SaveInitialGoals事件的处理
+
+    // 第二阶段新增：详细编辑事件处理器
+    on<UpdateEditingTitle>(_onUpdateEditingTitle);
+    on<UpdateEditingDescription>(_onUpdateEditingDescription);
+    on<CancelEditing>(_onCancelEditing);
+    on<StartEditingDate>(_onStartEditingDate);
+    on<UpdateEditingDate>(_onUpdateEditingDate);
+    on<SaveDate>(_onSaveDate);
+    on<CancelDateEditing>(_onCancelDateEditing);
+    on<StartEditingImage>(_onStartEditingImage);
+    on<UpdateEditingImage>(_onUpdateEditingImage);
+    on<SaveImage>(_onSaveImage);
+    on<CancelImageEditing>(_onCancelImageEditing);
+
+    // 增强的目标操作事件处理器
+    on<AddGoalWithDetails>(_onAddGoalWithDetails);
+    on<UpdateGoalWithValidation>(_onUpdateGoalWithValidation);
+    on<DeleteGoalWithCleanup>(_onDeleteGoalWithCleanup);
+    on<BatchUpdateGoals>(_onBatchUpdateGoals);
   }
 
   Future<void> _onLoadGoals(LoadGoals event, Emitter<GoalState> emit) async {
@@ -621,6 +640,343 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
       add(const LoadGoals());
     } catch (e) {
       emit(GoalError('保存初始目标数据失败: $e'));
+    }
+  }
+
+  // 第二阶段新增：详细编辑事件处理方法
+
+  Future<void> _onUpdateEditingTitle(
+      UpdateEditingTitle event, Emitter<GoalState> emit) async {
+    if (state is GoalsLoaded) {
+      final currentState = state as GoalsLoaded;
+      emit(currentState.copyWith(
+        editingTitleText: event.title,
+        isTitleValid: event.title.trim().isNotEmpty,
+        editingError: event.title.trim().isEmpty ? '标题不能为空' : null,
+      ));
+    }
+  }
+
+  Future<void> _onUpdateEditingDescription(
+      UpdateEditingDescription event, Emitter<GoalState> emit) async {
+    if (state is GoalsLoaded) {
+      final currentState = state as GoalsLoaded;
+      emit(currentState.copyWith(
+        editingDescriptionText: event.description,
+        isDescriptionValid: true, // 描述可以为空
+        editingError: null,
+      ));
+    }
+  }
+
+  Future<void> _onCancelEditing(
+      CancelEditing event, Emitter<GoalState> emit) async {
+    if (state is GoalsLoaded) {
+      final currentState = state as GoalsLoaded;
+      emit(currentState.copyWith(
+        isEditingTitle: false,
+        isEditingDescription: false,
+        isEditingDate: false,
+        isEditingImage: false,
+        editingTitleText: null,
+        editingDescriptionText: null,
+        editingDate: null,
+        editingImagePath: null,
+        editingError: null,
+      ));
+    }
+  }
+
+  Future<void> _onStartEditingDate(
+      StartEditingDate event, Emitter<GoalState> emit) async {
+    if (state is GoalsLoaded) {
+      final currentState = state as GoalsLoaded;
+      emit(currentState.copyWith(
+        isEditingDate: true,
+        editingDate: currentState.currentGoal?.targetDate ?? DateTime.now(),
+      ));
+    }
+  }
+
+  Future<void> _onUpdateEditingDate(
+      UpdateEditingDate event, Emitter<GoalState> emit) async {
+    if (state is GoalsLoaded) {
+      final currentState = state as GoalsLoaded;
+      emit(currentState.copyWith(
+        editingDate: event.date,
+      ));
+    }
+  }
+
+  Future<void> _onSaveDate(SaveDate event, Emitter<GoalState> emit) async {
+    if (state is GoalsLoaded) {
+      final currentState = state as GoalsLoaded;
+      if (currentState.currentGoal != null &&
+          currentState.editingDate != null) {
+        try {
+          final updatedGoal = currentState.currentGoal!.copyWith(
+            targetDate: currentState.editingDate,
+          );
+
+          await repository.updateGoal(updatedGoal);
+
+          final updatedGoals = currentState.goals.map((goal) {
+            return goal.id == updatedGoal.id ? updatedGoal : goal;
+          }).toList();
+
+          final updatedAllGoals = currentState.allGoals.map((goal) {
+            return goal.id == updatedGoal.id ? updatedGoal : goal;
+          }).toList();
+
+          emit(currentState.copyWith(
+            goals: updatedGoals,
+            allGoals: updatedAllGoals,
+            currentGoal: updatedGoal,
+            isEditingDate: false,
+            editingDate: null,
+          ));
+        } catch (e) {
+          emit(currentState.copyWith(
+            editingError: '保存日期失败: $e',
+          ));
+        }
+      }
+    }
+  }
+
+  Future<void> _onCancelDateEditing(
+      CancelDateEditing event, Emitter<GoalState> emit) async {
+    if (state is GoalsLoaded) {
+      final currentState = state as GoalsLoaded;
+      emit(currentState.copyWith(
+        isEditingDate: false,
+        editingDate: null,
+        editingError: null,
+      ));
+    }
+  }
+
+  Future<void> _onStartEditingImage(
+      StartEditingImage event, Emitter<GoalState> emit) async {
+    if (state is GoalsLoaded) {
+      final currentState = state as GoalsLoaded;
+      emit(currentState.copyWith(
+        isEditingImage: true,
+        editingImagePath: currentState.currentGoal?.imagePath,
+      ));
+    }
+  }
+
+  Future<void> _onUpdateEditingImage(
+      UpdateEditingImage event, Emitter<GoalState> emit) async {
+    if (state is GoalsLoaded) {
+      final currentState = state as GoalsLoaded;
+      emit(currentState.copyWith(
+        editingImagePath: event.imagePath,
+      ));
+    }
+  }
+
+  Future<void> _onSaveImage(SaveImage event, Emitter<GoalState> emit) async {
+    if (state is GoalsLoaded) {
+      final currentState = state as GoalsLoaded;
+      if (currentState.currentGoal != null) {
+        try {
+          final updatedGoal = currentState.currentGoal!.copyWith(
+            imagePath: currentState.editingImagePath,
+          );
+
+          await repository.updateGoal(updatedGoal);
+
+          final updatedGoals = currentState.goals.map((goal) {
+            return goal.id == updatedGoal.id ? updatedGoal : goal;
+          }).toList();
+
+          final updatedAllGoals = currentState.allGoals.map((goal) {
+            return goal.id == updatedGoal.id ? updatedGoal : goal;
+          }).toList();
+
+          emit(currentState.copyWith(
+            goals: updatedGoals,
+            allGoals: updatedAllGoals,
+            currentGoal: updatedGoal,
+            isEditingImage: false,
+            editingImagePath: null,
+          ));
+        } catch (e) {
+          emit(currentState.copyWith(
+            editingError: '保存图片失败: $e',
+          ));
+        }
+      }
+    }
+  }
+
+  Future<void> _onCancelImageEditing(
+      CancelImageEditing event, Emitter<GoalState> emit) async {
+    if (state is GoalsLoaded) {
+      final currentState = state as GoalsLoaded;
+      emit(currentState.copyWith(
+        isEditingImage: false,
+        editingImagePath: null,
+        editingError: null,
+      ));
+    }
+  }
+
+  // 增强的目标操作事件处理方法
+
+  Future<void> _onAddGoalWithDetails(
+      AddGoalWithDetails event, Emitter<GoalState> emit) async {
+    if (state is GoalsLoaded) {
+      final currentState = state as GoalsLoaded;
+      try {
+        // 保存到数据库
+        final goalId = await repository.insertGoal(event.goal);
+        event.goal.id = goalId;
+
+        // 更新目标列表
+        List<Goal> updatedGoals;
+        if (event.insertIndex != null &&
+            event.insertIndex! < currentState.goals.length) {
+          updatedGoals = List.from(currentState.goals);
+          updatedGoals.insert(event.insertIndex!, event.goal);
+        } else {
+          updatedGoals = [event.goal, ...currentState.goals];
+        }
+
+        // 更新所有目标列表
+        final updatedAllGoals = [event.goal, ...currentState.allGoals];
+
+        emit(currentState.copyWith(
+          goals: updatedGoals,
+          allGoals: updatedAllGoals,
+          currentGoal:
+              event.setAsCurrent ? event.goal : currentState.currentGoal,
+          lastAddedGoal: event.goal,
+        ));
+      } catch (e) {
+        emit(currentState.copyWith(
+          editingError: '添加目标失败: $e',
+        ));
+      }
+    }
+  }
+
+  Future<void> _onUpdateGoalWithValidation(
+      UpdateGoalWithValidation event, Emitter<GoalState> emit) async {
+    if (state is GoalsLoaded) {
+      final currentState = state as GoalsLoaded;
+      try {
+        // 数据验证
+        if (event.validateData) {
+          if (event.goal.title.trim().isEmpty) {
+            emit(currentState.copyWith(
+              editingError: '目标标题不能为空',
+            ));
+            return;
+          }
+        }
+
+        // 更新数据库
+        await repository.updateGoal(event.goal);
+
+        // 更新目标列表
+        final updatedGoals = currentState.goals.map((goal) {
+          return goal.id == event.goal.id ? event.goal : goal;
+        }).toList();
+
+        final updatedAllGoals = currentState.allGoals.map((goal) {
+          return goal.id == event.goal.id ? event.goal : goal;
+        }).toList();
+
+        // 如果需要更新相关目标（如子目标）
+        if (event.updateRelated) {
+          // 这里可以添加更新相关目标的逻辑
+        }
+
+        emit(currentState.copyWith(
+          goals: updatedGoals,
+          allGoals: updatedAllGoals,
+          currentGoal: currentState.currentGoal?.id == event.goal.id
+              ? event.goal
+              : currentState.currentGoal,
+        ));
+      } catch (e) {
+        emit(currentState.copyWith(
+          editingError: '更新目标失败: $e',
+        ));
+      }
+    }
+  }
+
+  Future<void> _onDeleteGoalWithCleanup(
+      DeleteGoalWithCleanup event, Emitter<GoalState> emit) async {
+    if (state is GoalsLoaded) {
+      final currentState = state as GoalsLoaded;
+      try {
+        // 如果需要删除子目标
+        if (event.deleteSubGoals && event.goal.subGoals.isNotEmpty) {
+          for (final subGoal in event.goal.subGoals) {
+            await repository.deleteGoal(subGoal.id!);
+          }
+        }
+
+        // 删除主目标
+        await repository.deleteGoal(event.goal.id!);
+
+        // 更新目标列表
+        final updatedGoals = currentState.goals
+            .where((goal) => goal.id != event.goal.id)
+            .toList();
+
+        final updatedAllGoals = currentState.allGoals
+            .where((goal) => goal.id != event.goal.id)
+            .toList();
+
+        // 更新当前目标
+        Goal? newCurrentGoal = currentState.currentGoal;
+        if (event.updateCurrent &&
+            currentState.currentGoal?.id == event.goal.id) {
+          newCurrentGoal = updatedGoals.isNotEmpty ? updatedGoals.first : null;
+        }
+
+        emit(currentState.copyWith(
+          goals: updatedGoals,
+          allGoals: updatedAllGoals,
+          currentGoal: newCurrentGoal,
+        ));
+      } catch (e) {
+        emit(currentState.copyWith(
+          editingError: '删除目标失败: $e',
+        ));
+      }
+    }
+  }
+
+  Future<void> _onBatchUpdateGoals(
+      BatchUpdateGoals event, Emitter<GoalState> emit) async {
+    if (state is GoalsLoaded) {
+      final currentState = state as GoalsLoaded;
+      try {
+        // 批量更新目标
+        for (final goal in event.goals) {
+          await repository.updateGoal(goal);
+        }
+
+        // 重新加载目标列表以确保数据一致性
+        final goals = await repository.getGoals();
+        final allGoals = await repository.getGoalTree();
+
+        emit(currentState.copyWith(
+          goals: goals,
+          allGoals: allGoals,
+        ));
+      } catch (e) {
+        emit(currentState.copyWith(
+          editingError: '批量更新目标失败: $e',
+        ));
+      }
     }
   }
 }

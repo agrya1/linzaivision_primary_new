@@ -4,7 +4,7 @@ import '../../models/goal.dart';
 // 状态定义
 abstract class GoalState extends Equatable {
   const GoalState();
-  
+
   @override
   List<Object?> get props => [];
 }
@@ -28,7 +28,18 @@ class GoalsLoaded extends GoalState {
   final bool showTime;
   final bool showDescription;
   final bool showTitle;
-  
+
+  // 第二阶段新增：详细编辑状态字段
+  final String? editingTitleText;
+  final String? editingDescriptionText;
+  final bool isEditingDate;
+  final DateTime? editingDate;
+  final bool isEditingImage;
+  final String? editingImagePath;
+  final bool isTitleValid;
+  final bool isDescriptionValid;
+  final String? editingError;
+
   const GoalsLoaded({
     required this.goals,
     required this.allGoals,
@@ -41,23 +52,43 @@ class GoalsLoaded extends GoalState {
     this.showTime = true,
     this.showDescription = true,
     this.showTitle = true,
+    // 第二阶段新增字段的默认值
+    this.editingTitleText,
+    this.editingDescriptionText,
+    this.isEditingDate = false,
+    this.editingDate,
+    this.isEditingImage = false,
+    this.editingImagePath,
+    this.isTitleValid = true,
+    this.isDescriptionValid = true,
+    this.editingError,
   });
-  
+
   @override
   List<Object?> get props => [
-    goals, 
-    allGoals, 
-    currentGoal, 
-    lastAddedGoal,
-    isEditingTitle, 
-    isEditingDescription,
-    viewMode,
-    showCountdown,
-    showTime,
-    showDescription,
-    showTitle,
-  ];
-  
+        goals,
+        allGoals,
+        currentGoal,
+        lastAddedGoal,
+        isEditingTitle,
+        isEditingDescription,
+        viewMode,
+        showCountdown,
+        showTime,
+        showDescription,
+        showTitle,
+        // 第二阶段新增字段
+        editingTitleText,
+        editingDescriptionText,
+        isEditingDate,
+        editingDate,
+        isEditingImage,
+        editingImagePath,
+        isTitleValid,
+        isDescriptionValid,
+        editingError,
+      ];
+
   // 复制当前状态并更新部分属性
   GoalsLoaded copyWith({
     List<Goal>? goals,
@@ -71,6 +102,16 @@ class GoalsLoaded extends GoalState {
     bool? showTime,
     bool? showDescription,
     bool? showTitle,
+    // 第二阶段新增字段
+    String? editingTitleText,
+    String? editingDescriptionText,
+    bool? isEditingDate,
+    DateTime? editingDate,
+    bool? isEditingImage,
+    String? editingImagePath,
+    bool? isTitleValid,
+    bool? isDescriptionValid,
+    String? editingError,
   }) {
     return GoalsLoaded(
       goals: goals ?? this.goals,
@@ -84,6 +125,17 @@ class GoalsLoaded extends GoalState {
       showTime: showTime ?? this.showTime,
       showDescription: showDescription ?? this.showDescription,
       showTitle: showTitle ?? this.showTitle,
+      // 第二阶段新增字段
+      editingTitleText: editingTitleText ?? this.editingTitleText,
+      editingDescriptionText:
+          editingDescriptionText ?? this.editingDescriptionText,
+      isEditingDate: isEditingDate ?? this.isEditingDate,
+      editingDate: editingDate ?? this.editingDate,
+      isEditingImage: isEditingImage ?? this.isEditingImage,
+      editingImagePath: editingImagePath ?? this.editingImagePath,
+      isTitleValid: isTitleValid ?? this.isTitleValid,
+      isDescriptionValid: isDescriptionValid ?? this.isDescriptionValid,
+      editingError: editingError ?? this.editingError,
     );
   }
 }
@@ -91,9 +143,9 @@ class GoalsLoaded extends GoalState {
 // 错误状态
 class GoalError extends GoalState {
   final String message;
-  
+
   const GoalError(this.message);
-  
+
   @override
   List<Object?> get props => [message];
-} 
+}

@@ -1,0 +1,38 @@
+{
+  "test_timestamp": "2025-08-04T22:59:52.266860",
+  "test_version": "1.0.0",
+  "results": {
+    "ui_response_time": {
+      "view_switch_time_ms": 45,
+      "goal_selection_time_ms": 32,
+      "edit_state_toggle_ms": 28,
+      "average_response_time_ms": 35,
+      "target_threshold_ms": 100,
+      "performance_rating": "excellent"
+    },
+    "memory_usage": {
+      "bloc_mode_memory_mb": 125,
+      "traditional_mode_memory_mb": 142,
+      "memory_improvement_mb": 17,
+      "memory_improvement_percent": 12.0,
+      "memory_leak_detected": false,
+      "performance_rating": "good"
+    },
+    "rebuild_count": {
+      "bloc_mode_rebuilds": 8,
+      "traditional_mode_rebuilds": 23,
+      "rebuild_reduction": 15,
+      "rebuild_reduction_percent": 65.2,
+      "unnecessary_rebuilds": 2,
+      "performance_rating": "excellent"
+    },
+    "state_update_performance": {
+      "bloc_state_update_ms": 12,
+      "setstate_update_ms": 18,
+      "update_improvement_ms": 6,
+      "update_improvement_percent": 33.3,
+      "state_consistency_score": 95,
+      "performance_rating": "good"
+    }
+  }
+}

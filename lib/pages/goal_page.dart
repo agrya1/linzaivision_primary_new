@@ -102,7 +102,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
 
     // 初始化空目标列表
     goals = [];
-    
+
     // 初始化BLoC适配器，默认为影子模式（不执行BLoC操作）
     _blocAdapter = GoalPageBlocAdapter(
       context,
@@ -171,7 +171,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   }
 
   /// 启用BLoC适配器执行模式
-  /// 
+  ///
   /// 当我们确认BLoC架构稳定后，可以调用此方法切换到BLoC模式
   void _enableBlocMode() {
     if (_blocAdapter != null) {
@@ -184,7 +184,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           enablePerformanceMonitoring: true, // 启用性能监控
         );
         print('已启用BLoC执行模式 - 数据操作将通过BLoC进行');
-        
+
         // 显示性能监控提示
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -200,17 +200,17 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       });
     }
   }
-  
+
   /// 显示性能统计对话框
   void _showPerformanceStats() {
     if (_blocAdapter == null) return;
-    
+
     // 获取性能统计数据
     final stats = _blocAdapter!.getPerformanceStats();
-    
+
     // 输出到控制台
     _blocAdapter!.printPerformanceStats();
-    
+
     // 显示对话框
     showDialog(
       context: context,
@@ -332,23 +332,43 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
         // 重新从数据库加载数据以确保数据完整
         final reloadedGoals =
             await _dbHelper.getGoals(parentId: widget.parentGoal?.id);
-        setState(() {
-          goals = reloadedGoals;
-          if (goals.isNotEmpty && currentGoal == null) {
-            currentGoal = goals[0];
+        // 第二阶段迁移：使用BLoC事件加载目标数据，移除setState
+        final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
+        if (isBlocModeEnabled) {
+          // 使用BLoC事件加载目标
+          context.read<GoalBloc>().add(LoadGoals());
+          if (reloadedGoals.isNotEmpty) {
+            context.read<GoalBloc>().add(SelectGoal(reloadedGoals[0]));
           }
-          _isLoading = false;
-        });
+        } else {
+          setState(() {
+            goals = reloadedGoals;
+            if (goals.isNotEmpty && currentGoal == null) {
+              currentGoal = goals[0];
+            }
+            _isLoading = false;
+          });
+        }
 
         await _refreshGoalTree();
       } else {
-        setState(() {
-          goals = loadedGoals;
-          if (goals.isNotEmpty && currentGoal == null) {
-            currentGoal = goals[0];
+        // 第二阶段迁移：使用BLoC事件加载目标数据，移除setState
+        final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
+        if (isBlocModeEnabled) {
+          // 使用BLoC事件加载目标
+          context.read<GoalBloc>().add(LoadGoals());
+          if (loadedGoals.isNotEmpty) {
+            context.read<GoalBloc>().add(SelectGoal(loadedGoals[0]));
           }
-          _isLoading = false;
-        });
+        } else {
+          setState(() {
+            goals = loadedGoals;
+            if (goals.isNotEmpty && currentGoal == null) {
+              currentGoal = goals[0];
+            }
+            _isLoading = false;
+          });
+        }
       }
 
       // 使用BLoC适配器加载数据（影子模式）
@@ -434,48 +454,55 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   Future<void> _refreshGoalTree() async {
     final executeMode = _blocAdapter?.executeMode ?? false;
     print('【GoalPage】开始刷新目标树，当前模式: ${executeMode ? "BLoC模式" : "传统模式"}');
-    
+
     // 检查BLoC适配器执行模式状态
     final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-    
+
     // 根据BLoC模式状态选择方法
     if (isBlocModeEnabled) {
       print('【GoalPage】使用BLoC方式刷新目标树');
       await _refreshGoalTreeWithBloc();
     } else {
-    try {
-      setState(() {
+      try {
+        setState(() {
           _isLoading = true;
-      });
+        });
 
         print('【GoalPage】使用传统方式刷新目标树');
         final startTime = DateTime.now();
-      allGoals = await _dbHelper.getGoalTree();
+        allGoals = await _dbHelper.getGoalTree();
         final endTime = DateTime.now();
         print(
             '【GoalPage】传统方式加载完成，耗时: ${endTime.difference(startTime).inMilliseconds}ms，获取 ${allGoals.length} 个目标');
 
-      if (mounted) {
-        setState(() {
-          if (widget.parentGoal == null) {
-            // 根页面goals为顶级目标
-            goals = allGoals;
+        if (mounted) {
+          // 第二阶段迁移：使用BLoC事件刷新目标树，移除setState
+          final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
+          if (isBlocModeEnabled) {
+            // 使用BLoC事件刷新目标树
+            context.read<GoalBloc>().add(const LoadGoals());
           } else {
-            // 查找当前父目标的子目标
-            final parentGoal = allGoals.firstWhere(
-              (g) => g.id == widget.parentGoal!.id,
-              orElse: () => widget.parentGoal!,
-            );
-            goals = parentGoal.subGoals;
-          }
+            setState(() {
+              if (widget.parentGoal == null) {
+                // 根页面goals为顶级目标
+                goals = allGoals;
+              } else {
+                // 查找当前父目标的子目标
+                final parentGoal = allGoals.firstWhere(
+                  (g) => g.id == widget.parentGoal!.id,
+                  orElse: () => widget.parentGoal!,
+                );
+                goals = parentGoal.subGoals;
+              }
 
-          if (goals.isNotEmpty && currentGoal == null) {
-            currentGoal = goals[0];
-          }
+              if (goals.isNotEmpty && currentGoal == null) {
+                currentGoal = goals[0];
+              }
 
-          _isLoading = false;
-        });
-      }
+              _isLoading = false;
+            });
+          }
+        }
 
         // 使用BLoC适配器刷新目标树（影子模式）
         print('【GoalPage】启动影子模式刷新目标树');
@@ -483,7 +510,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           onSuccess: (blocAllGoals) {
             print(
                 '【GoalPage】BLoC刷新目标树成功 - 影子模式 - 目标数量: ${blocAllGoals.length}');
-            
+
             // 在影子模式成功时也更新本地状态
             if (mounted && blocAllGoals.isNotEmpty) {
               print('【GoalPage】从影子模式更新本地目标树');
@@ -492,23 +519,22 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
                 print(
                     '【GoalPage】数据差异: 传统=${allGoals.length}, BLoC=${blocAllGoals.length}');
               }
-              
+
+              // 第二阶段迁移：影子模式数据同步，移除setState，依赖BLoC状态自动更新
               // 在影子模式下也更新本地状态，确保两种模式数据一致
-              setState(() {
-                allGoals = blocAllGoals;
-                
-                // 同时更新goals列表
-                if (widget.parentGoal == null) {
-                  goals = allGoals;
-                } else {
-                  // 查找当前父目标的子目标
-                  final parentGoal = allGoals.firstWhere(
-                    (g) => g.id == widget.parentGoal!.id,
-                    orElse: () => widget.parentGoal!,
-                  );
-                  goals = parentGoal.subGoals;
-                }
-              });
+              allGoals = blocAllGoals;
+
+              // 同时更新goals列表
+              if (widget.parentGoal == null) {
+                goals = allGoals;
+              } else {
+                // 查找当前父目标的子目标
+                final parentGoal = allGoals.firstWhere(
+                  (g) => g.id == widget.parentGoal!.id,
+                  orElse: () => widget.parentGoal!,
+                );
+                goals = parentGoal.subGoals;
+              }
             }
           },
           onError: (error) {
@@ -518,12 +544,12 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
 
         // 通知父组件目标树已更改
         widget.onGoalTreeChanged?.call();
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = '加载数据失败: $e';
-          _isLoading = false;
-        });
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _error = '加载数据失败: $e';
+            _isLoading = false;
+          });
         }
       }
     }
@@ -542,7 +568,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
             '【GoalPage】在子目标视图创建同级子目标: 父ID=${goal.parentId}, 标题=${goal.title}');
       } else {
         // 否则使用当前页面的父目标ID（创建子目标）
-      goal.parentId = widget.parentGoal?.id;
+        goal.parentId = widget.parentGoal?.id;
         print('【GoalPage】创建子目标: 父ID=${goal.parentId}, 标题=${goal.title}');
       }
 
@@ -551,11 +577,20 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       goal.id = id;
       print('【GoalPage】子目标创建成功: ID=$id, 父ID=${goal.parentId}');
 
-      // 更新UI
-      setState(() {
-        goals.insert(0, goal); // 插入到列表开头
-        currentGoal = goal; // 选中新创建的目标
-      });
+      // 第二阶段迁移：使用BLoC事件新增目标，移除setState
+      final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
+      if (isBlocModeEnabled) {
+        // 使用BLoC事件新增目标
+        context
+            .read<GoalBloc>()
+            .add(AddGoalWithDetails(goal, setAsCurrent: true, insertIndex: 0));
+      } else {
+        // 更新UI
+        setState(() {
+          goals.insert(0, goal); // 插入到列表开头
+          currentGoal = goal; // 选中新创建的目标
+        });
+      }
 
       // 重要：刷新目标树，确保子目标显示在树中
       await _refreshGoalTreeUnified();
@@ -565,14 +600,14 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
         print('【GoalPage】通知父页面刷新目标树');
         widget.onGoalTreeChanged!();
       }
-      
+
       // 使用BLoC适配器添加目标（影子模式）
       _blocAdapter?.addGoal(
         goal: goal,
         onSuccess: (blocGoal) {
           print(
               '【影子模式】子目标添加成功 - 目标ID: ${blocGoal.id}, 父ID: ${blocGoal.parentId}');
-          
+
           // 记录操作结果比较
           _logBlocOperationResult(
             operation: '添加子目标',
@@ -583,7 +618,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
         },
         onError: (error) {
           print('【影子模式】子目标添加失败: $error');
-          
+
           // 记录操作结果比较
           _logBlocOperationResult(
             operation: '添加子目标',
@@ -617,22 +652,31 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       // 更新数据库
       await _dbHelper.updateGoal(goal);
 
-      // 更新UI
-      setState(() {
-        final index = goals.indexWhere((g) => g.id == goal.id);
-        if (index != -1) {
-          goals[index] = goal;
-          if (currentGoal?.id == goal.id) {
-            currentGoal = goal;
+      // 第二阶段迁移：使用BLoC事件更新目标，移除setState
+      final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
+      if (isBlocModeEnabled) {
+        // 使用BLoC事件更新目标
+        context
+            .read<GoalBloc>()
+            .add(UpdateGoalWithValidation(goal, validateData: false));
+      } else {
+        // 更新UI
+        setState(() {
+          final index = goals.indexWhere((g) => g.id == goal.id);
+          if (index != -1) {
+            goals[index] = goal;
+            if (currentGoal?.id == goal.id) {
+              currentGoal = goal;
+            }
           }
-        }
-      });
+        });
+      }
 
       // 如果是子目标,通知父页面刷新
       if (widget.parentGoal != null && widget.onGoalTreeChanged != null) {
         widget.onGoalTreeChanged!();
       }
-      
+
       // 影子模式：通过BLoC适配器执行相同操作
       _blocAdapter?.updateGoal(
         goal: goal,
@@ -657,19 +701,28 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       // 从数据库中删除
       await _dbHelper.deleteGoal(goal.id!);
 
-      // 更新UI
-      setState(() {
-        goals.remove(goal);
-        if (currentGoal?.id == goal.id) {
-          currentGoal = goals.isNotEmpty ? goals[0] : null;
-        }
-      });
+      // 第二阶段迁移：使用BLoC事件删除目标，移除setState
+      final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
+      if (isBlocModeEnabled) {
+        // 使用BLoC事件删除目标
+        context
+            .read<GoalBloc>()
+            .add(DeleteGoalWithCleanup(goal, updateCurrent: true));
+      } else {
+        // 更新UI
+        setState(() {
+          goals.remove(goal);
+          if (currentGoal?.id == goal.id) {
+            currentGoal = goals.isNotEmpty ? goals[0] : null;
+          }
+        });
+      }
 
       // 如果是子目标,通知父页面刷新
       if (widget.parentGoal != null && widget.onGoalTreeChanged != null) {
         widget.onGoalTreeChanged!();
       }
-      
+
       // 影子模式：通过BLoC适配器执行相同操作
       _blocAdapter?.deleteGoal(
         goalId: goal.id!,
@@ -692,12 +745,12 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   Future<void> _handleDeleteGoalFromTree(Goal goal) async {
     // 检查BLoC适配器执行模式状态
     final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-    
+
     // 根据BLoC模式状态选择方法
     if (isBlocModeEnabled) {
       await _deleteGoalWithBloc(goal);
     } else {
-    await _deleteGoal(goal);
+      await _deleteGoal(goal);
     }
   }
 
@@ -705,10 +758,10 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       Goal goal, GoalStatus newStatus) async {
     // 检查BLoC适配器执行模式状态
     final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-    
+
     // 创建更新后的目标
     final updatedGoal = goal.copyWith(status: newStatus);
-    
+
     // 根据BLoC模式状态选择方法
     if (isBlocModeEnabled) {
       await _updateGoalWithBloc(updatedGoal);
@@ -721,10 +774,297 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   Widget build(BuildContext context) {
     // 检查是否启用了任何BLoC功能
     final bool isBlocEnabled = _blocAdapter?.executeMode ?? false;
-    
+
+    // 新的BlocBuilder实现 - 第一阶段迁移
+    if (isBlocEnabled) {
+      return _buildWithBlocBuilder(context);
+    }
+
+    // 原有实现保持不变作为备份
+    return _buildWithBlocListener(context);
+  }
+
+  /// 新的BlocBuilder驱动的build方法 - 第一阶段实现
+  Widget _buildWithBlocBuilder(BuildContext context) {
+    return BlocBuilder<GoalBloc, GoalState>(
+      builder: (context, state) {
+        if (state is GoalLoading) {
+          return _buildLoadingView();
+        } else if (state is GoalError) {
+          return _buildErrorView(state.message);
+        } else if (state is GoalsLoaded) {
+          return _buildMainContent(state);
+        }
+
+        return _buildInitialView();
+      },
+    );
+  }
+
+  /// 构建加载视图
+  Widget _buildLoadingView() {
+    return const Scaffold(
+      body: Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+  }
+
+  /// 构建错误视图
+  Widget _buildErrorView(String message) {
+    return Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error, size: 64, color: Colors.red),
+            const SizedBox(height: 16),
+            Text(
+              '错误: $message',
+              style: const TextStyle(fontSize: 16),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () {
+                context.read<GoalBloc>().add(const LoadGoals());
+              },
+              child: const Text('重试'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 构建初始视图
+  Widget _buildInitialView() {
+    return const Scaffold(
+      body: Center(
+        child: Text('正在初始化...'),
+      ),
+    );
+  }
+
+  /// 构建主要内容 - 基于BLoC状态
+  Widget _buildMainContent(GoalsLoaded state) {
+    return Scaffold(
+      appBar: _buildAppBarWithState(state),
+      body: _buildCurrentViewWithState(state),
+      // 移除悬浮按钮，因为FullScreenView内部已有新增按钮
+      // floatingActionButton: _buildFloatingActionButton(),
+      drawer: _buildDrawer(),
+    );
+  }
+
+  /// 构建AppBar - 基于BLoC状态
+  PreferredSizeWidget _buildAppBarWithState(GoalsLoaded state) {
+    return AppBar(
+      title: Text(widget.parentGoal?.title ?? '临在意识'),
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      iconTheme: IconThemeData(
+        color: state.viewMode == 0 ? Colors.white : Colors.black,
+      ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.search),
+          onPressed: () {
+            showSearch(
+              context: context,
+              delegate: GoalSearchDelegate(goals),
+            );
+          },
+        ),
+        IconButton(
+          icon: Image.asset(
+            state.viewMode == 0
+                ? 'assets/icons/View-switch-white.png'
+                : state.viewMode == 1
+                    ? 'assets/icons/View-switch-white.png'
+                    : 'assets/icons/View-switch-white.png',
+            width: 24,
+            height: 24,
+            color: state.viewMode == 0 ? Colors.white : Colors.black,
+          ),
+          onPressed: () {
+            // 使用BLoC事件切换视图
+            final nextView = (state.viewMode + 1) % 3;
+            context.read<GoalBloc>().add(ToggleViewMode(nextView));
+          },
+        ),
+        // 在全屏视图且有当前目标时显示操作菜单
+        if (state.viewMode == 0 && state.currentGoal != null)
+          _buildGoalOperationMenuWithState(state),
+      ],
+    );
+  }
+
+  /// 构建目标操作菜单 - 基于BLoC状态
+  Widget _buildGoalOperationMenuWithState(GoalsLoaded state) {
+    return GoalOperationMenu(
+      currentGoal: state.currentGoal,
+      onStatusChange: () {
+        if (state.currentGoal != null) {
+          _showStatusDialog(state.currentGoal!);
+        }
+      },
+      onDelete: _deleteCurrentGoal,
+      onShare: () {
+        if (state.currentGoal != null) {
+          _showShareDialog(state.currentGoal!);
+        }
+      },
+      onToggleCountdown: () {
+        context
+            .read<GoalBloc>()
+            .add(ToggleCountdownDisplay(!state.showCountdown));
+      },
+      showCountdown: state.showCountdown,
+      onToggleTime: () {
+        context.read<GoalBloc>().add(ToggleTimeDisplay(!state.showTime));
+      },
+      showTime: state.showTime,
+      onToggleDescription: () {
+        context
+            .read<GoalBloc>()
+            .add(ToggleDescriptionDisplay(!state.showDescription));
+      },
+      showDescription: state.showDescription,
+      onToggleTitle: () {
+        context.read<GoalBloc>().add(ToggleTitleDisplay(!state.showTitle));
+      },
+      showTitle: state.showTitle,
+      onToggleDeadline: () {
+        if (state.currentGoal != null) {
+          _toggleDeadline(state.currentGoal!);
+        }
+      },
+      onAddSubGoal: () {
+        // 智能子条目管理：如果有子条目则查看，没有则新增
+        if (state.currentGoal != null &&
+            state.currentGoal!.subGoals.isNotEmpty) {
+          _viewSubGoalsWithState(state);
+        } else {
+          _addSubGoalFromFullScreenWithState(state);
+        }
+      },
+      onToggleCustomCountdown: () {
+        if (state.currentGoal != null) {
+          _showCustomCountdownDialog();
+        }
+      },
+      hasCustomCountdown: state.currentGoal?.hasCustomCountdown ?? false,
+      onViewSubGoals: () {
+        _viewSubGoalsWithState(state);
+      },
+    );
+  }
+
+  /// 构建当前视图 - 基于BLoC状态
+  Widget _buildCurrentViewWithState(GoalsLoaded state) {
+    switch (state.viewMode) {
+      case 0:
+        return _buildFullScreenViewWithState(state);
+      case 1:
+        return _buildTimelineViewWithState(state);
+      case 2:
+        return _buildGridViewWithState(state);
+      case 3:
+        return _buildGoalTreeViewWithState(state);
+      case 4:
+        return _buildExploreViewWithState(state);
+      default:
+        return const Center(
+          child: Text(
+            '未知视图模式',
+            style: TextStyle(color: Colors.white),
+          ),
+        );
+    }
+  }
+
+  /// 构建全屏视图 - 基于BLoC状态
+  Widget _buildFullScreenViewWithState(GoalsLoaded state) {
+    // 如果没有当前目标，显示空状态
+    if (state.currentGoal == null) {
+      return const Center(
+        child: Text(
+          '请选择一个目标',
+          style: TextStyle(color: Colors.white, fontSize: 18),
+        ),
+      );
+    }
+
+    return FullScreenView(
+      currentGoal: state.currentGoal!,
+      goals: state.goals,
+      onGoalSelect: (goal) {
+        context.read<GoalBloc>().add(SelectGoal(goal));
+      },
+      showTime: state.showTime,
+      showDescription: state.showDescription,
+      showTitle: state.showTitle,
+      isEditingTitle: state.isEditingTitle,
+      titleController: _titleController,
+      onTitleEdit: () {
+        context.read<GoalBloc>().add(const StartEditingTitle());
+      },
+      onTitleSave: () {
+        final title = _titleController.text;
+        context.read<GoalBloc>().add(SaveTitle(title));
+      },
+      onDescriptionEdit: () {
+        context
+            .read<GoalBloc>()
+            .add(ToggleDescriptionDisplay(!state.showDescription));
+      },
+      onImagePick: _pickImage,
+      onToggleTitle: () {
+        context.read<GoalBloc>().add(ToggleTitleDisplay(!state.showTitle));
+      },
+      onAddGoal: _addNewGoalWrapper,
+      onAddSubGoal: () => _addSubGoalFromFullScreenWithState(state),
+      hasCustomCountdown: state.currentGoal?.hasCustomCountdown ?? false,
+    );
+  }
+
+  /// 构建时间轴视图 - 基于BLoC状态
+  Widget _buildTimelineViewWithState(GoalsLoaded state) {
+    // 暂时使用原有的时间轴视图构建方法，后续优化
+    return _buildTimelineView();
+  }
+
+  /// 构建网格视图 - 基于BLoC状态
+  Widget _buildGridViewWithState(GoalsLoaded state) {
+    // 暂时使用原有的网格视图构建方法，后续优化
+    return _buildGridView();
+  }
+
+  /// 构建目标树视图 - 基于BLoC状态
+  Widget _buildGoalTreeViewWithState(GoalsLoaded state) {
+    // 暂时使用原有的抽屉构建方法，后续优化
+    return _buildDrawer();
+  }
+
+  /// 构建探索视图 - 基于BLoC状态
+  Widget _buildExploreViewWithState(GoalsLoaded state) {
+    return ExploreView(
+      onSelectCard: (card) {
+        context.read<GoalBloc>().add(SelectGoal(card));
+        context.read<GoalBloc>().add(const ToggleViewMode(0));
+      },
+    );
+  }
+
+  /// 原有的BlocListener实现 - 保留作为备份
+  Widget _buildWithBlocListener(BuildContext context) {
+    // 检查是否启用了任何BLoC功能
+    final bool isBlocEnabled = _blocAdapter?.executeMode ?? false;
+
     // 如果启用了BLoC功能，使用BlocListener进行状态监听
     // BlocListener只监听状态，不参与UI构建，因此可以安全地在其回调中调用setState
-    return isBlocEnabled 
+    return isBlocEnabled
         ? BlocListener<GoalBloc, GoalState>(
             listenWhen: (previous, current) {
               // 只在状态真正变化时触发监听
@@ -735,18 +1075,18 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
                       '【GoalPage】BlocListener监测到目标树变化: ${previous.allGoals.length} -> ${current.allGoals.length}');
                   return true;
                 }
-                
+
                 // 检查所有可能需要UI更新的状态变化
                 final prevGoal = previous.currentGoal;
                 final currGoal = current.currentGoal;
-                
+
                 // 如果当前目标发生变化，需要更新
                 if (prevGoal?.id != currGoal?.id) {
                   print(
                       '【GoalPage】BlocListener监测到目标ID变化: ${prevGoal?.id} -> ${currGoal?.id}');
                   return true;
                 }
-                
+
                 // 如果当前目标的属性发生变化，需要更新
                 if (prevGoal != null &&
                     currGoal != null &&
@@ -763,9 +1103,9 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
                           currGoal.customCountdownDays;
                   final mediaChanged =
                       prevGoal.imagePath != currGoal.imagePath ||
-                                       prevGoal.videoPath != currGoal.videoPath || 
-                                       prevGoal.hasVideo != currGoal.hasVideo;
-                  
+                          prevGoal.videoPath != currGoal.videoPath ||
+                          prevGoal.hasVideo != currGoal.hasVideo;
+
                   if (titleChanged ||
                       descChanged ||
                       statusChanged ||
@@ -773,16 +1113,16 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
                       countdownChanged ||
                       mediaChanged) {
                     print('【GoalPage】BlocListener监测到目标属性变化: ' +
-                          (titleChanged ? '标题 ' : '') +
-                          (descChanged ? '描述 ' : '') +
-                          (statusChanged ? '状态 ' : '') +
-                          (dateChanged ? '日期 ' : '') +
-                          (countdownChanged ? '倒计时 ' : '') +
-                          (mediaChanged ? '媒体 ' : ''));
+                        (titleChanged ? '标题 ' : '') +
+                        (descChanged ? '描述 ' : '') +
+                        (statusChanged ? '状态 ' : '') +
+                        (dateChanged ? '日期 ' : '') +
+                        (countdownChanged ? '倒计时 ' : '') +
+                        (mediaChanged ? '媒体 ' : ''));
                     return true;
                   }
                 }
-                
+
                 // 如果UI状态发生变化，需要更新
                 final editTitleChanged =
                     previous.isEditingTitle != current.isEditingTitle;
@@ -805,16 +1145,16 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
                     showDescChanged ||
                     showTitleChanged) {
                   print('【GoalPage】BlocListener监测到UI状态变化: ' +
-                        (editTitleChanged ? '标题编辑 ' : '') +
-                        (editDescChanged ? '描述编辑 ' : '') +
-                        (viewModeChanged ? '视图模式 ' : '') +
-                        (showCountdownChanged ? '显示倒计时 ' : '') +
-                        (showTimeChanged ? '显示时间 ' : '') +
-                        (showDescChanged ? '显示描述 ' : '') +
-                        (showTitleChanged ? '显示标题 ' : ''));
+                      (editTitleChanged ? '标题编辑 ' : '') +
+                      (editDescChanged ? '描述编辑 ' : '') +
+                      (viewModeChanged ? '视图模式 ' : '') +
+                      (showCountdownChanged ? '显示倒计时 ' : '') +
+                      (showTimeChanged ? '显示时间 ' : '') +
+                      (showDescChanged ? '显示描述 ' : '') +
+                      (showTitleChanged ? '显示标题 ' : ''));
                   return true;
                 }
-                
+
                 return false;
               }
               return true; // 其他状态类型变化时都触发
@@ -822,11 +1162,11 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
             listener: (context, state) {
               if (state is GoalsLoaded) {
                 _log('收到BLoC状态更新: ${state.runtimeType}');
-                
+
                 // 在listener回调中同步状态
                 syncStateFromBloc(state);
               }
-              
+
               if (state is GoalError) {
                 _log('BLoC错误: ${state.message}', true);
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -842,12 +1182,12 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           )
         : _buildScaffold();
   }
-  
+
   // 从BLoC状态同步到本地状态的方法
   void syncStateFromBloc(GoalsLoaded state) {
     try {
       print('【GoalPage】同步BLoC状态到本地状态');
-      
+
       // 添加防抖机制，避免短时间内多次触发同步
       final now = DateTime.now();
       if (now.difference(_lastSyncTime).inMilliseconds < 100) {
@@ -855,33 +1195,33 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
         return;
       }
       _lastSyncTime = now;
-      
+
       final syncStartTime = DateTime.now();
-      
+
+      // 第二阶段迁移：BLoC状态同步已经自动处理数据更新，移除手动setState
       // 同步目标树数据 (allGoals)
       if (state.allGoals.isNotEmpty) {
         print('【GoalPage】同步目标树数据: ${state.allGoals.length} 个目标');
-        setState(() {
-          allGoals = state.allGoals;
-          
-          // 如果是根页面，同时更新goals列表
-          if (widget.parentGoal == null) {
-            goals = allGoals;
-          } else {
-            // 如果是子目标页面，更新子目标列表
-            final parentGoal = allGoals.firstWhere(
-              (g) => g.id == widget.parentGoal!.id,
-              orElse: () => widget.parentGoal!,
-            );
-            goals = parentGoal.subGoals;
-          }
-        });
+        // BLoC状态已经包含最新数据，UI会自动更新，无需手动setState
+        allGoals = state.allGoals;
+
+        // 如果是根页面，同时更新goals列表
+        if (widget.parentGoal == null) {
+          goals = allGoals;
+        } else {
+          // 如果是子目标页面，更新子目标列表
+          final parentGoal = allGoals.firstWhere(
+            (g) => g.id == widget.parentGoal!.id,
+            orElse: () => widget.parentGoal!,
+          );
+          goals = parentGoal.subGoals;
+        }
       } else {
         print('【GoalPage】警告: BLoC返回的目标树为空，保留本地数据');
       }
-      
+
       // 只在启用了对应功能且状态确实变化时才更新
-      
+
       // 标题编辑状态
       if (_featureToggles.titleEditing &&
           _isEditingTitle != state.isEditingTitle) {
@@ -891,7 +1231,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           _isEditingTitle = state.isEditingTitle;
         });
       }
-      
+
       // 同步标题内容（如果处于编辑状态）
       if (_featureToggles.titleEditing &&
           state.isEditingTitle &&
@@ -899,31 +1239,30 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           _titleController.text.isEmpty) {
         _titleController.text = state.currentGoal!.title;
       }
-      
+
       // 当前目标 - 只在明确需要切换目标时才更新
-      if (state.currentGoal != null && 
+      if (state.currentGoal != null &&
           (currentGoal == null || currentGoal!.id != state.currentGoal!.id)) {
         print(
             '【GoalPage】同步当前目标: ${currentGoal?.id} -> ${state.currentGoal!.id}');
-        setState(() {
-          currentGoal = state.currentGoal;
-          // 确保标题编辑器内容与当前目标匹配
-          if (_isEditingTitle) {
-            _titleController.text = state.currentGoal!.title;
-          }
-          
-          // 同时更新goals列表中的对应项
-          if (state.goals.isNotEmpty) {
-            goals = state.goals;
-          }
-        });
+        // 第二阶段迁移：BLoC状态同步已经自动处理数据更新，移除手动setState
+        currentGoal = state.currentGoal;
+        // 确保标题编辑器内容与当前目标匹配
+        if (_isEditingTitle) {
+          _titleController.text = state.currentGoal!.title;
+        }
+
+        // 同时更新goals列表中的对应项
+        if (state.goals.isNotEmpty) {
+          goals = state.goals;
+        }
       } else if (state.currentGoal != null &&
           currentGoal != null &&
-                 currentGoal!.id == state.currentGoal!.id) {
+          currentGoal!.id == state.currentGoal!.id) {
         // 同一目标的属性更新
         bool needsUpdate = false;
         Goal updatedGoal = currentGoal!;
-        
+
         // 检查标题更新
         if (currentGoal!.title != state.currentGoal!.title) {
           print(
@@ -931,9 +1270,9 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           updatedGoal = updatedGoal.copyWith(title: state.currentGoal!.title);
           needsUpdate = true;
         }
-        
+
         // 检查描述更新
-        if (_featureToggles.descriptionEditing && 
+        if (_featureToggles.descriptionEditing &&
             currentGoal!.description != state.currentGoal!.description) {
           print(
               '【GoalPage】同步目标描述: ${currentGoal!.description} -> ${state.currentGoal!.description}');
@@ -941,7 +1280,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
               updatedGoal.copyWith(description: state.currentGoal!.description);
           needsUpdate = true;
         }
-        
+
         // 检查状态更新
         if (currentGoal!.status != state.currentGoal!.status) {
           print(
@@ -949,7 +1288,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           updatedGoal = updatedGoal.copyWith(status: state.currentGoal!.status);
           needsUpdate = true;
         }
-        
+
         // 检查日期更新
         if (currentGoal!.targetDate != state.currentGoal!.targetDate) {
           print(
@@ -958,7 +1297,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
               updatedGoal.copyWith(targetDate: state.currentGoal!.targetDate);
           needsUpdate = true;
         }
-        
+
         // 检查自定义倒计时更新
         if (currentGoal!.hasCustomCountdown !=
                 state.currentGoal!.hasCustomCountdown ||
@@ -967,11 +1306,11 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           print(
               '【GoalPage】同步自定义倒计时: ${currentGoal!.customCountdownDays} -> ${state.currentGoal!.customCountdownDays}');
           updatedGoal = updatedGoal.copyWith(
-            hasCustomCountdown: state.currentGoal!.hasCustomCountdown,
+              hasCustomCountdown: state.currentGoal!.hasCustomCountdown,
               customCountdownDays: state.currentGoal!.customCountdownDays);
           needsUpdate = true;
         }
-        
+
         // 检查图片/视频更新
         if (currentGoal!.imagePath != state.currentGoal!.imagePath ||
             currentGoal!.videoPath != state.currentGoal!.videoPath ||
@@ -979,17 +1318,17 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           print(
               '【GoalPage】同步目标媒体: 图片=${state.currentGoal!.imagePath}, 视频=${state.currentGoal!.videoPath}');
           updatedGoal = updatedGoal.copyWith(
-            imagePath: state.currentGoal!.imagePath,
-            videoPath: state.currentGoal!.videoPath,
+              imagePath: state.currentGoal!.imagePath,
+              videoPath: state.currentGoal!.videoPath,
               hasVideo: state.currentGoal!.hasVideo);
           needsUpdate = true;
         }
-        
+
         // 如果有任何属性更新，则更新当前目标
         if (needsUpdate) {
           setState(() {
             currentGoal = updatedGoal;
-            
+
             // 同时更新goals列表中的对应项
             final index = goals.indexWhere((g) => g.id == updatedGoal.id);
             if (index != -1) {
@@ -998,7 +1337,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           });
         }
       }
-      
+
       // 其他状态同步...
       // 例如视图模式、UI显示选项等
       if (state.showCountdown != _showCountdown) {
@@ -1006,39 +1345,39 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           _showCountdown = state.showCountdown;
         });
       }
-      
+
       if (state.showTime != _showTime) {
         setState(() {
           _showTime = state.showTime;
         });
       }
-      
+
       if (state.showDescription != _showDescription) {
         setState(() {
           _showDescription = state.showDescription;
         });
       }
-      
+
       if (state.showTitle != _showTitle) {
         setState(() {
           _showTitle = state.showTitle;
         });
       }
-      
+
       // 同步视图模式
       if (state.viewMode != currentView) {
         setState(() {
           currentView = state.viewMode;
         });
       }
-      
+
       // 添加数据一致性验证
       if (allGoals.length != state.allGoals.length &&
           state.allGoals.isNotEmpty) {
         print(
             '【警告】同步后数据不一致: 本地=${allGoals.length}, BLoC=${state.allGoals.length}');
       }
-      
+
       // 记录同步耗时
       final syncEndTime = DateTime.now();
       print(
@@ -1047,7 +1386,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       print('【GoalPage】状态同步出错: $e');
     }
   }
-  
+
   // 构建传统UI的方法（与原有方法保持一致）
   Widget _buildScaffold() {
     return Scaffold(
@@ -1125,9 +1464,16 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
               onToggleDescription: _toggleShowDescription,
               showDescription: _showDescription,
               onToggleTitle: () {
-                setState(() {
-                  _showTitle = !_showTitle;
-                });
+                // 第二阶段迁移：使用BLoC事件切换标题显示，移除setState
+                final bool isBlocModeEnabled =
+                    _blocAdapter?.executeMode ?? false;
+                if (isBlocModeEnabled) {
+                  context.read<GoalBloc>().add(ToggleTitleDisplay(!_showTitle));
+                } else {
+                  setState(() {
+                    _showTitle = !_showTitle;
+                  });
+                }
               },
               showTitle: _showTitle,
               onToggleDeadline: () {
@@ -1200,7 +1546,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       floatingActionButton: _buildFloatingActionButton(),
     );
   }
-  
+
   // 日志方法，用于追踪BLoC相关操作
   void _log(String message, [bool forceLog = false]) {
     if ((_blocAdapter?.logLevel ?? 0) > 1 || forceLog) {
@@ -1209,9 +1555,16 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   }
 
   void _onChangeView() {
-    setState(() {
-      currentView = (currentView + 1) % 3;
-    });
+    // 第二阶段迁移：使用BLoC事件切换视图，移除setState
+    final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
+    if (isBlocModeEnabled) {
+      final nextView = (currentView + 1) % 3;
+      context.read<GoalBloc>().add(ToggleViewMode(nextView));
+    } else {
+      setState(() {
+        currentView = (currentView + 1) % 3;
+      });
+    }
   }
 
   // 全屏视图
@@ -1228,16 +1581,30 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       onTitleEdit: _startTitleEdit,
       onTitleSave: _saveTitleEdit,
       onDescriptionEdit: () {
-        setState(() {
-          _showDescription = !_showDescription;
-        });
+        // 第二阶段迁移：使用BLoC事件切换描述显示，移除setState
+        final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
+        if (isBlocModeEnabled) {
+          context
+              .read<GoalBloc>()
+              .add(ToggleDescriptionDisplay(!_showDescription));
+        } else {
+          setState(() {
+            _showDescription = !_showDescription;
+          });
+        }
       },
       onSaveDescription: _updateGoalDescription,
       onImagePick: _pickImage,
       onGoalSelect: (goal) {
-        setState(() {
-          currentGoal = goal;
-        });
+        // 第二阶段迁移：使用BLoC事件选择目标，移除setState
+        final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
+        if (isBlocModeEnabled) {
+          context.read<GoalBloc>().add(SelectGoal(goal));
+        } else {
+          setState(() {
+            currentGoal = goal;
+          });
+        }
       },
       onAddGoal: () => _addNewGoalWrapper(),
       onStatusChange: _handleUpdateGoalStatusSimple,
@@ -1246,9 +1613,15 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       showDescription: _showDescription,
       showTitle: _showTitle,
       onToggleTitle: () {
-        setState(() {
-          _showTitle = !_showTitle;
-        });
+        // 第二阶段迁移：使用BLoC事件切换标题显示，移除setState
+        final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
+        if (isBlocModeEnabled) {
+          context.read<GoalBloc>().add(ToggleTitleDisplay(!_showTitle));
+        } else {
+          setState(() {
+            _showTitle = !_showTitle;
+          });
+        }
       },
       onToggleDeadline: _toggleDeadline,
       onAddSubGoal: () => _addSubGoalFromFullScreen(),
@@ -1265,81 +1638,70 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       print('【GoalPage】无法编辑标题：没有选中的目标');
       return;
     }
-    
+
     // 检查BLoC适配器执行模式状态和标题编辑功能开关
     final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
     final bool isTitleEditingEnabled = _featureToggles.titleEditing;
-    
+
     print(
         '【GoalPage】开始编辑标题，BLoC模式: ${isBlocModeEnabled && isTitleEditingEnabled}, 目标ID: ${currentGoal!.id}');
-    
+
     if (isBlocModeEnabled && isTitleEditingEnabled) {
       // 首先确保BLoC知道当前选中的目标
       context.read<GoalBloc>().add(SelectGoal(currentGoal!));
-      
+
       // 然后使用BLoC触发标题编辑事件
       context.read<GoalBloc>().add(const StartEditingTitle());
-      
+
       // 设置标题控制器文本
       _titleController.text = currentGoal!.title;
-      
-      // 也在本地设置编辑状态，不仅依赖BLoC状态同步
+
+      // 第二阶段迁移：使用BLoC事件更新编辑中的标题文本，移除setState
+      context.read<GoalBloc>().add(UpdateEditingTitle(currentGoal!.title));
+    } else {
+      // 保持原有行为
+      _titleController.text = currentGoal!.title;
       setState(() {
         _isEditingTitle = true;
       });
-    } else {
-      // 保持原有行为
-    _titleController.text = currentGoal!.title;
-    setState(() {
-      _isEditingTitle = true;
-    });
     }
   }
 
   // 保存标题
   void _saveTitleEdit() {
+    // 检查BLoC适配器执行模式状态和标题编辑功能开关
+    final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
+    final bool isTitleEditingEnabled = _featureToggles.titleEditing;
+
     if (_titleController.text.isNotEmpty && currentGoal != null) {
       final updatedGoal = currentGoal!.copyWith(
         title: _titleController.text,
       );
-      
-      // 检查BLoC适配器执行模式状态和标题编辑功能开关
-      final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-      final bool isTitleEditingEnabled = _featureToggles.titleEditing;
-      
+
       print(
           '【GoalPage】保存标题编辑，BLoC模式: ${isBlocModeEnabled && isTitleEditingEnabled}, 新标题: ${_titleController.text}');
-      
+
       // 根据BLoC模式状态选择更新方法
       if (isBlocModeEnabled && isTitleEditingEnabled) {
-        // 使用UpdateGoal事件更新标题，确保传递完整的目标信息
-        context.read<GoalBloc>().add(UpdateGoal(updatedGoal));
-        
-        // 手动关闭编辑状态，不要等待BLoC状态同步
-        setState(() {
-          _isEditingTitle = false;
-          // 立即更新本地目标，避免UI闪烁
-          currentGoal = updatedGoal;
-          
-          // 同时更新goals列表中的对应项
-          final index = goals.indexWhere((g) => g.id == updatedGoal.id);
-          if (index != -1) {
-            goals[index] = updatedGoal;
-          }
-        });
+        // 第二阶段迁移：使用SaveTitle事件保存标题，移除setState
+        context.read<GoalBloc>().add(SaveTitle(_titleController.text));
       } else {
         // 使用传统方式更新目标
-      _updateGoal(updatedGoal);
-        
+        _updateGoal(updatedGoal);
+
         setState(() {
           _isEditingTitle = false;
         });
       }
     } else {
-      // 取消编辑
-      setState(() {
-        _isEditingTitle = false;
-      });
+      // 第二阶段迁移：使用CancelEditing事件取消编辑，移除setState
+      if (isBlocModeEnabled && isTitleEditingEnabled) {
+        context.read<GoalBloc>().add(const CancelEditing());
+      } else {
+        setState(() {
+          _isEditingTitle = false;
+        });
+      }
     }
   }
 
@@ -1471,7 +1833,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   Future<void> _deleteCurrentGoal() async {
     final context = this.context;
     if (!mounted) return;
-    
+
     // 检查BLoC适配器执行模式状态
     final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
 
@@ -1603,7 +1965,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
                                   if (isBlocModeEnabled) {
                                     _deleteGoalWithBloc(currentGoal!);
                                   } else {
-                                  _deleteGoal(currentGoal!);
+                                    _deleteGoal(currentGoal!);
                                   }
                                 }
                               },
@@ -1716,7 +2078,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   void _showDeleteGoalDialog(Goal goal) {
     // 检查BLoC适配器执行模式状态
     final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-    
+
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
@@ -1801,9 +2163,9 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
                             ),
                           ),
                         ],
+                      ),
                     ),
                   ),
-                ),
                 // 按钮区域
                 Padding(
                   padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
@@ -1833,7 +2195,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
                           if (isBlocModeEnabled) {
                             _deleteGoalWithBloc(goal);
                           } else {
-                          _deleteGoal(goal);
+                            _deleteGoal(goal);
                           }
                         },
                         style: ElevatedButton.styleFrom(
@@ -1910,7 +2272,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
     final TextEditingController descriptionController = TextEditingController();
     // 移除 selectedDate 变量，不再需要日期选择
     String? imagePath;
-    
+
     // 检查BLoC适配器执行模式状态
     final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
 
@@ -2134,7 +2496,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
                             ),
                           ],
                         ),
-                        
+
                         // 添加BLoC模式选择
                         if (isBlocModeEnabled) ...[
                           const SizedBox(height: 16),
@@ -2208,7 +2570,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
                           // 使用BLoC架构添加目标
                           _addNewGoalWithBloc(newGoal);
                         } else {*/
-                          // 使用传统方式添加目标
+                        // 使用传统方式添加目标
                         _addNewGoal(newGoal);
                         //}
                       }
@@ -2567,9 +2929,15 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
 
   // 切换倒计时显示
   void _toggleCountdown() {
-    setState(() {
-      _showCountdown = !_showCountdown;
-    });
+    // 第二阶段迁移：使用BLoC事件切换倒计时显示，移除setState
+    final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
+    if (isBlocModeEnabled) {
+      context.read<GoalBloc>().add(ToggleCountdownDisplay(!_showCountdown));
+    } else {
+      setState(() {
+        _showCountdown = !_showCountdown;
+      });
+    }
   }
 
   // 显示分享对话框
@@ -2650,19 +3018,19 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           child: Column(
             children: [
               Expanded(
-          child: GoalTreeView(
-            goals: allGoals,
-            onSearchTap: () {
+                child: GoalTreeView(
+                  goals: allGoals,
+                  onSearchTap: () {
                     _showSearch();
-            },
-            onSyncTap: _handleSyncTap,
-            membershipStatus: _membershipStatus,
-            onDeleteGoal: _handleDeleteGoalFromTree,
-            onUpdateGoalStatus: _handleUpdateGoalStatusFromTree,
-            onGoalSelect: (goal) {
+                  },
+                  onSyncTap: _handleSyncTap,
+                  membershipStatus: _membershipStatus,
+                  onDeleteGoal: _handleDeleteGoalFromTree,
+                  onUpdateGoalStatus: _handleUpdateGoalStatusFromTree,
+                  onGoalSelect: (goal) {
                     // 关闭抽屉
                     Navigator.pop(context);
-                    
+
                     // 直接加载目标，而不是通过路由
                     print(
                         '【GoalPage】从目标树选择目标: ID=${goal.id}, 标题=${goal.title}, 父ID=${goal.parentId}, 是否子目标=${goal.parentId != null}');
@@ -2670,17 +3038,17 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
                   },
                   isLoggedIn: authService.isLoggedIn,
                   userAvatar: authService.avatarUrl,
-            onSettingsTap: () {
+                  onSettingsTap: () {
                     // 关闭抽屉
                     Navigator.pop(context);
-                    
+
                     // 使用NavigationService导航到设置页面
                     NavigationService().navigateTo(AppRoutes.settings);
-            },
-            onLoginTap: () {
+                  },
+                  onLoginTap: () {
                     // 关闭抽屉
                     Navigator.pop(context);
-                    
+
                     // 使用NavigationService导航到登录页面
                     NavigationService().navigateTo(AppRoutes.login);
                   },
@@ -2688,7 +3056,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
                   onExploreTab: () {
                     // 关闭抽屉
                     Navigator.pop(context);
-                    
+
                     // 使用NavigationService导航到探索页面
                     NavigationService().navigateTo(AppRoutes.explore);
                   },
@@ -2730,7 +3098,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
                               // 禁用BLoC模式
                               setState(() {
                                 _blocAdapter = GoalPageBlocAdapter(
-                context,
+                                  context,
                                   logLevel: 2,
                                   executeMode: false,
                                 );
@@ -2794,15 +3162,27 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   }
 
   void _toggleShowTime() {
-    setState(() {
-      _showTime = !_showTime;
-    });
+    // 第二阶段迁移：使用BLoC事件切换时间显示，移除setState
+    final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
+    if (isBlocModeEnabled) {
+      context.read<GoalBloc>().add(ToggleTimeDisplay(!_showTime));
+    } else {
+      setState(() {
+        _showTime = !_showTime;
+      });
+    }
   }
 
   void _toggleShowDescription() {
-    setState(() {
-      _showDescription = !_showDescription;
-    });
+    // 第二阶段迁移：使用BLoC事件切换描述显示，移除setState
+    final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
+    if (isBlocModeEnabled) {
+      context.read<GoalBloc>().add(ToggleDescriptionDisplay(!_showDescription));
+    } else {
+      setState(() {
+        _showDescription = !_showDescription;
+      });
+    }
   }
 
   // 为新建目标显示图片选择器
@@ -3016,24 +3396,24 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   // 添加截止日期切换功能
   Future<void> _toggleDeadline(Goal goal) async {
     try {
-    if (goal.targetDate != null) {
-      // 有截止日期，则清除
+      if (goal.targetDate != null) {
+        // 有截止日期，则清除
         print('【GoalPage】删除截止日期，目标ID: ${goal.id}');
         final updatedGoal = goal.copyWith(targetDate: null);
-        
+
         // 检查BLoC适配器执行模式状态
         final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-        
+
         if (isBlocModeEnabled) {
           // 使用BLoC更新
           context.read<GoalBloc>().add(UpdateGoal(updatedGoal));
-          
+
           // 立即更新本地状态
           setState(() {
             if (currentGoal?.id == goal.id) {
               currentGoal = updatedGoal;
             }
-            
+
             // 同时更新goals列表中的对应项
             final index = goals.indexWhere((g) => g.id == goal.id);
             if (index != -1) {
@@ -3044,35 +3424,35 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           // 使用传统方式更新
           await _updateGoal(updatedGoal);
         }
-    } else {
-      // 无截止日期，则设置
+      } else {
+        // 无截止日期，则设置
         print('【GoalPage】设置截止日期，目标ID: ${goal.id}');
-        
+
         // 使用日期选择器让用户选择日期
-      final now = DateTime.now();
+        final now = DateTime.now();
         final selectedDate = await _showCustomDatePicker(
           context,
           now.add(const Duration(days: 30)),
           '选择截止日期',
         );
-        
+
         // 如果用户选择了日期
         if (selectedDate != null) {
           final updatedGoal = goal.copyWith(targetDate: selectedDate);
-          
+
           // 检查BLoC适配器执行模式状态
           final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-          
+
           if (isBlocModeEnabled) {
             // 使用BLoC更新
             context.read<GoalBloc>().add(UpdateGoal(updatedGoal));
-            
+
             // 立即更新本地状态
             setState(() {
               if (currentGoal?.id == goal.id) {
                 currentGoal = updatedGoal;
               }
-              
+
               // 同时更新goals列表中的对应项
               final index = goals.indexWhere((g) => g.id == goal.id);
               if (index != -1) {
@@ -3081,7 +3461,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
             });
           } else {
             // 使用传统方式更新
-      await _updateGoal(updatedGoal);
+            await _updateGoal(updatedGoal);
           }
         }
       }
@@ -3096,17 +3476,17 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
 
   // 更新目标描述
   void _updateGoalDescription(Goal goal, String newDescription) {
-      final updatedGoal = goal.copyWith(
-        description: newDescription,
-      );
-    
+    final updatedGoal = goal.copyWith(
+      description: newDescription,
+    );
+
     // 检查BLoC适配器执行模式状态和描述编辑功能开关
     final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
     final bool isDescriptionEditingEnabled = _featureToggles.descriptionEditing;
-    
+
     print(
         '【GoalPage】更新目标描述，BLoC模式: ${isBlocModeEnabled && isDescriptionEditingEnabled}');
-    
+
     // 根据BLoC模式状态选择更新方法
     if (isBlocModeEnabled && isDescriptionEditingEnabled) {
       // 使用UpdateGoal事件代替SaveDescription事件，确保传递完整的目标信息
@@ -3120,12 +3500,12 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   Future<void> _pickImage() async {
     // 检查BLoC适配器执行模式状态
     final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-    
+
     // 根据BLoC模式状态选择方法
     if (isBlocModeEnabled) {
       await _pickImageWithBloc();
     } else {
-    await _showImagePicker();
+      await _showImagePicker();
     }
   }
 
@@ -3149,25 +3529,25 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       }
 
       final updatedGoal = goal.copyWith(status: newStatus);
-      
+
       // 检查BLoC适配器执行模式状态
       final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-      
+
       print(
           '【GoalPage】更新目标状态，BLoC模式: $isBlocModeEnabled, 目标ID: ${goal.id}, 新状态: $newStatus');
-      
+
       // 根据BLoC模式状态选择更新方法
       if (isBlocModeEnabled) {
         // 使用UpdateGoal事件直接更新状态，确保传递完整的目标信息
         context.read<GoalBloc>().add(UpdateGoal(updatedGoal));
-        
+
         // 立即更新本地状态，避免UI闪烁
         setState(() {
           // 更新当前目标
           if (currentGoal?.id == goal.id) {
             currentGoal = updatedGoal;
           }
-          
+
           // 同时更新goals列表中的对应项
           final index = goals.indexWhere((g) => g.id == goal.id);
           if (index != -1) {
@@ -3175,15 +3555,15 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           }
         });
       } else {
-      await _updateGoal(updatedGoal);
-        
+        await _updateGoal(updatedGoal);
+
         // 确保UI立即更新
         setState(() {
           // 更新当前目标
           if (currentGoal?.id == goal.id) {
             currentGoal = updatedGoal;
           }
-          
+
           // 同时更新goals列表中的对应项
           final index = goals.indexWhere((g) => g.id == goal.id);
           if (index != -1) {
@@ -3198,25 +3578,25 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   Future<bool> _updateGoalDate(Goal goal, DateTime? newDate) async {
     try {
       final updatedGoal = goal.copyWith(targetDate: newDate);
-      
+
       // 检查BLoC适配器执行模式状态
       final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-      
+
       print(
           '【GoalPage】更新目标日期，BLoC模式: $isBlocModeEnabled, 目标ID: ${goal.id}, 新日期: ${newDate?.toString() ?? "无"}');
-      
+
       // 根据BLoC模式状态选择更新方法
       if (isBlocModeEnabled) {
         // 使用UpdateGoal事件直接更新日期，确保传递完整的目标信息
         context.read<GoalBloc>().add(UpdateGoal(updatedGoal));
-        
+
         // 立即更新本地状态，避免UI闪烁
         setState(() {
           // 更新当前目标
           if (currentGoal?.id == goal.id) {
             currentGoal = updatedGoal;
           }
-          
+
           // 同时更新goals列表中的对应项
           final index = goals.indexWhere((g) => g.id == goal.id);
           if (index != -1) {
@@ -3225,22 +3605,22 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
         });
       } else {
         // 使用传统方式更新
-      await _updateGoal(updatedGoal);
-        
+        await _updateGoal(updatedGoal);
+
         // 确保UI立即更新
         setState(() {
           // 更新当前目标
           if (currentGoal?.id == goal.id) {
             currentGoal = updatedGoal;
           }
-          
+
           // 同时更新goals列表中的对应项
           final index = goals.indexWhere((g) => g.id == goal.id);
           if (index != -1) {
             goals[index] = updatedGoal;
           }
         });
-        
+
         // 影子模式：通过BLoC适配器执行相同操作
         _blocAdapter?.updateGoalDate(
           goal: goal,
@@ -3253,7 +3633,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           },
         );
       }
-      
+
       return true;
     } catch (e) {
       print('更新日期失败: $e');
@@ -3291,7 +3671,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
     setState(() {
       _showCountdown = !_showCountdown;
     });
-    
+
     // 添加提示信息
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -3304,10 +3684,10 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   // 为特定目标设置自定义倒计时
   Future<void> _setCustomCountdownForGoal(Goal goal, int? days) async {
     // 简化版本：只切换倒计时显示状态
-                    setState(() {
+    setState(() {
       _showCountdown = days != null;
     });
-    
+
     // 添加提示信息
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -3323,7 +3703,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   }
 
   /// 记录和分析BLoC操作结果
-  /// 
+  ///
   /// 此方法用于在开发阶段记录和分析BLoC操作与直接数据库操作的差异
   /// 当我们确认BLoC架构稳定后，可以移除此方法
   void _logBlocOperationResult({
@@ -3334,22 +3714,22 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   }) {
     // 记录操作结果
     print('【BLoC分析】操作: $operation, 结果: ${success ? '成功' : '失败'}');
-    
+
     if (message != null) {
       print('【BLoC分析】消息: $message');
     }
-    
+
     if (data != null) {
       print('【BLoC分析】数据: $data');
     }
-    
+
     // 在开发阶段，可以在这里添加更多的分析逻辑
     // 例如，比较BLoC操作和直接数据库操作的结果
     // 或者记录操作耗时等性能指标
   }
 
   /// 使用BLoC直接添加新目标
-  /// 
+  ///
   /// 这是一个完全使用BLoC架构的方法，不再直接操作数据库
   /// 作为渐进式重构的第一步，我们先实现这个方法，然后逐步替换其他方法
   Future<void> _addNewGoalWithBloc(Goal goal) async {
@@ -3367,15 +3747,15 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
         goal.parentId = widget.parentGoal?.id;
         print('【GoalPage】BLoC模式创建子目标: 父ID=${goal.parentId}, 标题=${goal.title}');
       }
-      
+
       // 显示加载指示器
       setState(() {
         _isLoading = true;
       });
-      
+
       // 使用BLoC添加目标
       final completer = Completer<Goal>();
-      
+
       // 使用BLoC适配器添加目标
       _blocAdapter?.addGoal(
         goal: goal,
@@ -3389,26 +3769,26 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           completer.completeError(error);
         },
       );
-      
+
       // 等待操作完成
       final addedGoal = await completer.future;
-      
+
       // 更新UI
       setState(() {
         goals.insert(0, addedGoal); // 插入到列表开头
         currentGoal = addedGoal; // 选中新创建的目标
         _isLoading = false;
       });
-      
+
       // 重要：刷新目标树，确保子目标显示在树中
       await _refreshGoalTreeWithBloc();
-      
+
       // 如果是子目标,通知父页面刷新
       if (widget.parentGoal != null && widget.onGoalTreeChanged != null) {
         print('【GoalPage】通知父页面刷新目标树');
         widget.onGoalTreeChanged!();
       }
-      
+
       // 显示成功消息
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('子目标添加成功 (使用BLoC)')),
@@ -3418,7 +3798,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       setState(() {
         _isLoading = false;
       });
-      
+
       print('【GoalPage】BLoC模式添加子目标失败: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -3428,20 +3808,20 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   }
 
   /// 使用BLoC直接删除目标
-  /// 
+  ///
   /// 这是一个完全使用BLoC架构的方法，不再直接操作数据库
   Future<void> _deleteGoalWithBloc(Goal goal) async {
     try {
       print('【GoalPage】BLoC模式删除目标: ID=${goal.id}, 标题=${goal.title}');
-      
+
       // 显示加载指示器
       setState(() {
         _isLoading = true;
       });
-      
+
       // 使用BLoC删除目标
       final completer = Completer<void>();
-      
+
       // 使用BLoC适配器删除目标
       _blocAdapter?.deleteGoal(
         goalId: goal.id!,
@@ -3454,10 +3834,10 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           completer.completeError(error);
         },
       );
-      
+
       // 等待操作完成
       await completer.future;
-      
+
       // 更新UI
       setState(() {
         goals.remove(goal);
@@ -3466,16 +3846,16 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
         }
         _isLoading = false;
       });
-      
+
       // 重要：刷新目标树，确保目标树更新
       await _refreshGoalTreeWithBloc();
-      
+
       // 如果是子目标,通知父页面刷新
       if (widget.parentGoal != null && widget.onGoalTreeChanged != null) {
         print('【GoalPage】通知父页面刷新目标树');
         widget.onGoalTreeChanged!();
       }
-      
+
       // 显示成功消息
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('目标删除成功 (使用BLoC)')),
@@ -3485,7 +3865,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       setState(() {
         _isLoading = false;
       });
-      
+
       print('【GoalPage】BLoC模式删除目标失败: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -3495,18 +3875,18 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   }
 
   /// 使用BLoC直接更新目标
-  /// 
+  ///
   /// 这是一个完全使用BLoC架构的方法，不再直接操作数据库
   Future<void> _updateGoalWithBloc(Goal goal) async {
     try {
       print('【GoalPage】BLoC模式更新目标: ID=${goal.id}, 标题=${goal.title}');
-      
+
       // 获取GoalBloc实例
       final goalBloc = BlocProvider.of<GoalBloc>(context);
-      
+
       // 发送更新事件
       goalBloc.add(UpdateGoal(goal));
-      
+
       // 更新当前目标
       setState(() {
         final index = goals.indexWhere((g) => g.id == goal.id);
@@ -3515,12 +3895,12 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           currentGoal = goal;
         }
       });
-      
+
       // 如果是子目标或更新会影响目标树，刷新目标树
       if (goal.parentId != null || goal.subGoals.isNotEmpty) {
         print('【GoalPage】目标有父子关系，刷新目标树');
         await _refreshGoalTreeWithBloc();
-        
+
         // 如果是子目标,通知父页面刷新
         if (widget.parentGoal != null && widget.onGoalTreeChanged != null) {
           print('【GoalPage】通知父页面刷新目标树');
@@ -3537,14 +3917,14 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   }
 
   /// 使用BLoC直接设置自定义倒计时
-  /// 
+  ///
   /// 这是一个完全使用BLoC架构的方法，不再直接操作数据库
   Future<void> _setCustomCountdownForGoalWithBloc(Goal goal, int? days) async {
     // 简化版本：只切换倒计时显示状态
     setState(() {
       _showCountdown = days != null;
     });
-    
+
     // 添加提示信息
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -3555,30 +3935,30 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   }
 
   /// 使用BLoC直接刷新目标树
-  /// 
+  ///
   /// 这是一个完全使用BLoC架构的方法，不再直接操作数据库
   Future<void> _refreshGoalTreeWithBloc() async {
     print('【GoalPage】开始使用BLoC方式刷新目标树');
-    
+
     try {
       setState(() {
         _isLoading = true;
       });
-      
+
       // 创建一个Completer，用于异步等待BLoC操作完成
       final completer = Completer<void>();
-      
+
       // 添加一次性监听器，等待状态更新
       late StreamSubscription<GoalState> subscription;
       subscription = context.read<GoalBloc>().stream.listen((state) {
         if (state is GoalsLoaded) {
           print('【GoalPage】BLoC刷新目标树成功，获取 ${state.allGoals.length} 个目标');
-          
+
           // 更新本地状态
           if (mounted && !completer.isCompleted) {
             setState(() {
               allGoals = state.allGoals;
-              
+
               // 更新goals列表
               if (widget.parentGoal == null) {
                 // 根页面goals为顶级目标
@@ -3591,62 +3971,62 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
                 );
                 goals = parentGoal.subGoals;
               }
-              
+
               if (goals.isNotEmpty && currentGoal == null) {
                 currentGoal = goals[0];
               }
-              
+
               _isLoading = false;
             });
-            
+
             // 完成异步操作
             completer.complete();
             subscription.cancel();
           }
         } else if (state is GoalError) {
           print('【GoalPage】BLoC刷新目标树失败: ${state.message}');
-          
+
           if (mounted && !completer.isCompleted) {
             setState(() {
               _error = '刷新目标树失败: ${state.message}';
               _isLoading = false;
             });
-            
+
             // 完成异步操作
             completer.complete();
             subscription.cancel();
           }
         }
       });
-      
+
       // 触发BLoC事件
       context.read<GoalBloc>().add(const RefreshGoalTree());
-      
+
       // 添加超时处理
       Future.delayed(const Duration(seconds: 5), () {
         if (!completer.isCompleted) {
           print('【GoalPage】BLoC刷新目标树超时');
           subscription.cancel();
-          
+
           if (mounted) {
             setState(() {
               _error = '刷新目标树超时';
               _isLoading = false;
             });
           }
-          
+
           completer.complete();
         }
       });
-      
+
       // 等待操作完成
       await completer.future;
-      
+
       // 通知父组件目标树已更改
       widget.onGoalTreeChanged?.call();
     } catch (e) {
       print('【GoalPage】BLoC刷新目标树出错: $e');
-      
+
       if (mounted) {
         setState(() {
           _error = '刷新目标树出错: $e';
@@ -3657,11 +4037,11 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   }
 
   /// 使用BLoC选择并更新图片/视频背景
-  /// 
+  ///
   /// 这是一个完全使用BLoC架构的方法，不再直接操作数据库
   Future<void> _pickImageWithBloc() async {
     if (!mounted || currentGoal == null) return;
-    
+
     await ImagePickerDialog.show(
       context: context,
       membershipStatus: _membershipStatus,
@@ -3671,7 +4051,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           setState(() {
             _isLoading = true;
           });
-          
+
           // 创建更新后的目标
           Goal updatedGoal;
           if (isVideo) {
@@ -3680,7 +4060,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
             if (!videoFile.existsSync()) {
               throw Exception('视频文件不存在或无法访问');
             }
-            
+
             // 检查文件大小和可访问性
             try {
               final fileSize = videoFile.lengthSync();
@@ -3695,33 +4075,33 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
             } catch (e) {
               throw Exception('视频文件无法读取: $e');
             }
-            
+
             updatedGoal = currentGoal!.copyWith(
               imagePath: 'assets/images/default/default.jpg', // 使用默认图片路径
               videoPath: path, // 保存视频路径到videoPath
               hasVideo: true, // 标记为视频
               videoMuted: false, // 默认不静音
             );
-    } else {
+          } else {
             updatedGoal = currentGoal!.copyWith(
               imagePath: path,
               videoPath: null, // 清除视频路径
               hasVideo: false, // 标记为非视频
             );
           }
-          
+
           print(
               '【GoalPage】更新目标背景，BLoC模式: true, 目标ID: ${currentGoal!.id}, 是视频: $isVideo, 路径: $path');
-          
+
           // 直接使用BLoC事件更新目标
           context.read<GoalBloc>().add(UpdateGoal(updatedGoal));
-          
+
           // 立即更新本地状态，避免UI闪烁
           setState(() {
             currentGoal = updatedGoal;
             _isLoading = false;
           });
-          
+
           // 显示成功消息
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
@@ -3732,7 +4112,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           setState(() {
             _isLoading = false;
           });
-          
+
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('更新背景失败: $e')),
@@ -3750,7 +4130,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   void _showSearch() {
     // 检查BLoC适配器执行模式状态
     final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-    
+
     // 根据BLoC模式状态选择搜索方法
     if (isBlocModeEnabled) {
       _showSearchWithBloc();
@@ -3767,20 +4147,20 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
     try {
       // 获取SearchBloc
       final searchBloc = BlocProvider.of<SearchBloc>(context);
-      
+
       // 显示基于BLoC的搜索代理
       final selectedGoal = await showSearch<Goal?>(
         context: context,
         delegate: GoalSearchDelegateBloc(searchBloc),
       );
-      
+
       // 处理选中的目标
       if (selectedGoal != null && mounted) {
         setState(() {
           currentGoal = selectedGoal;
           currentView = 0; // 切换到全屏视图
         });
-        
+
         // 记录性能数据
         if (_blocAdapter != null) {
           print('搜索并选择了目标: ${selectedGoal.title}');
@@ -3788,7 +4168,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       }
     } catch (e) {
       print('使用BLoC搜索失败: $e');
-      
+
       // 回退到传统搜索
       showSearch(
         context: context,
@@ -3800,39 +4180,39 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   // 加载特定目标
   Future<void> _loadSpecificGoal(int goalId) async {
     print('【GoalPage】加载特定目标: $goalId');
-    
+
     try {
       setState(() {
         _isLoading = true;
         _error = null;
       });
-      
+
       // 检查BLoC适配器执行模式状态
       final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-      
+
       // 根据BLoC模式状态选择方法
       if (isBlocModeEnabled) {
         // 使用BLoC加载特定目标
         print('【GoalPage】通过BLoC加载特定目标: $goalId');
-        
+
         // 创建一个Completer，用于异步等待BLoC操作完成
         final completer = Completer<void>();
-        
+
         // 添加一次性监听器，等待状态更新
         late StreamSubscription<GoalState> subscription;
         subscription = context.read<GoalBloc>().stream.listen((state) {
           print('【GoalPage】收到BLoC状态更新: ${state.runtimeType}');
-          
+
           if (state is GoalsLoaded && state.currentGoal != null) {
             print(
                 '【GoalPage】BLoC加载特定目标成功: ID=${state.currentGoal!.id}, 标题=${state.currentGoal!.title}');
-            
+
             // 验证加载的是否是请求的目标
             if (state.currentGoal!.id != goalId) {
               print(
                   '【GoalPage】警告：加载的目标ID(${state.currentGoal!.id})与请求的ID($goalId)不匹配');
             }
-            
+
             if (mounted && !completer.isCompleted) {
               setState(() {
                 currentGoal = state.currentGoal;
@@ -3841,59 +4221,59 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
                 currentView = 0; // 切换到全屏视图
                 _isLoading = false;
               });
-              
+
               // 完成异步操作
               completer.complete();
               subscription.cancel();
             }
           } else if (state is GoalError) {
             print('【GoalPage】BLoC加载特定目标失败: ${state.message}');
-            
+
             if (mounted && !completer.isCompleted) {
               setState(() {
                 _error = state.message;
                 _isLoading = false;
               });
-              
+
               // 完成异步操作
               completer.complete();
               subscription.cancel();
             }
           }
         });
-        
+
         // 触发BLoC事件
         print('【GoalPage】发送LoadSpecificGoal事件，goalId: $goalId');
         context.read<GoalBloc>().add(LoadSpecificGoal(goalId));
-        
+
         // 添加超时处理
         Future.delayed(const Duration(seconds: 5), () {
           if (!completer.isCompleted) {
             print('【GoalPage】BLoC加载特定目标超时');
             subscription.cancel();
-            
+
             if (mounted) {
               setState(() {
                 _error = '加载特定目标超时';
                 _isLoading = false;
               });
             }
-            
+
             completer.complete();
           }
         });
-        
+
         // 等待操作完成
         print('【GoalPage】等待BLoC操作完成');
         await completer.future;
         print('【GoalPage】BLoC操作已完成');
-    } else {
+      } else {
         // 使用传统方式加载特定目标
         print('【GoalPage】通过传统方式加载特定目标: $goalId');
         final goal = await _dbHelper.getGoal(goalId);
         if (goal != null) {
           print('【GoalPage】传统方式加载特定目标成功: ID=${goal.id}, 标题=${goal.title}');
-          
+
           // 加载同级目标（如果是子目标，加载其兄弟节点）
           List<Goal> siblingGoals;
           if (goal.parentId != null) {
@@ -3903,20 +4283,27 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
             siblingGoals = await _dbHelper.getGoals(parentId: null);
             print('【GoalPage】加载根目标: ${siblingGoals.length}个');
           }
-          
-          setState(() {
-            currentGoal = goal;
-            goals = siblingGoals; // 设置同级目标列表
-            currentView = 0; // 切换到全屏视图
-            _isLoading = false;
-          });
-          
+
+          // 第二阶段迁移：使用BLoC事件加载特定目标，移除setState
+          final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
+          if (isBlocModeEnabled) {
+            // 使用BLoC事件加载特定目标
+            context.read<GoalBloc>().add(LoadSpecificGoal(goalId));
+          } else {
+            setState(() {
+              currentGoal = goal;
+              goals = siblingGoals; // 设置同级目标列表
+              currentView = 0; // 切换到全屏视图
+              _isLoading = false;
+            });
+          }
+
           // 使用BLoC适配器加载特定目标（影子模式）
           _blocAdapter?.loadSpecificGoal(
             goalId: goalId,
             onSuccess: (blocGoal) {
               print('【影子模式】加载特定目标成功: ID=${blocGoal.id}, 标题=${blocGoal.title}');
-              
+
               // 比较数据差异
               if (blocGoal.id != goal.id) {
                 print('【影子模式】数据差异: 传统ID=${goal.id}, BLoC ID=${blocGoal.id}');
@@ -3960,29 +4347,29 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   void _explainNextSteps() {
     _log('=== BLoC渐进式迁移 - 下一步操作 ===');
     _log('当前进度: 已完成标题和描述编辑功能的BLoC适配');
-    
+
     _log('1. 目前适配器状态:');
     _log('   - 执行模式: ${_blocAdapter?.executeMode ?? false ? '已启用' : '未启用'}');
     _log('   - 标题编辑功能: ${_featureToggles.titleEditing ? '已启用' : '未启用'}');
     _log('   - 描述编辑功能: ${_featureToggles.descriptionEditing ? '已启用' : '未启用'}');
-    
+
     _log('2. 下一步建议:');
     _log('   a. 继续适配其他UI功能，如状态切换、日期更新等');
     _log('   b. 增加单元测试覆盖率，验证BLoC逻辑');
     _log('   c. 逐步提高BLoC执行模式的使用比例');
-    
+
     _log('3. 渐进式启用流程:');
     _log('   a. 在开发者设置中启用特定功能');
     _log('   b. 使用该功能并验证其行为');
     _log('   c. 收集任何异常或不一致情况');
     _log('   d. 解决问题后再启用更多功能');
-    
+
     _log('4. 当前迁移策略:');
     _log('   - 保留传统UI构建方法');
     _log('   - 使用BlocListener监听状态变化');
     _log('   - 根据功能开关决定使用传统方法还是BLoC方法');
     _log('   - 使用影子模式验证BLoC操作是否正确');
-    
+
     _log('5. 完全迁移的标志:');
     _log('   - 所有功能都使用BLoC事件和状态');
     _log('   - UI完全由BlocBuilder/BlocConsumer构建');
@@ -3999,12 +4386,12 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   }) {
     final logPrefix = success ? '✅ 成功' : '❌ 失败';
     print('【影子模式】$logPrefix - $operation: $message');
-    
+
     // 如果有额外数据，打印出来
     if (data != null && data.isNotEmpty) {
       print('【影子模式】数据: $data');
     }
-    
+
     // 如果启用了性能监控，记录操作结果
     _blocAdapter?.recordOperationResult(
       operation: operation,
@@ -4019,48 +4406,48 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       print('【GoalPage】无法删除目标：ID为空');
       return;
     }
-    
+
     print('【GoalPage】开始使用BLoC方式删除目标: ${goal.id}');
-    
+
     try {
       setState(() {
         _isLoading = true;
       });
-      
+
       // 创建一个Completer，用于异步等待BLoC操作完成
       final completer = Completer<void>();
-      
+
       // 添加一次性监听器，等待状态更新
       late StreamSubscription<GoalState> subscription;
       subscription = context.read<GoalBloc>().stream.listen((state) {
         if (state is GoalsLoaded) {
           // 检查目标是否已被删除
           final isDeleted = !state.allGoals.any((g) => g.id == goal.id);
-          
+
           if (isDeleted) {
             print('【GoalPage】BLoC删除目标成功: ${goal.id}');
-            
+
             // 更新本地状态
             if (mounted && !completer.isCompleted) {
               setState(() {
                 // 从goals列表中移除
                 goals.removeWhere((g) => g.id == goal.id);
-                
+
                 // 如果删除的是当前目标，选择新的当前目标
                 if (currentGoal?.id == goal.id) {
                   currentGoal = goals.isNotEmpty ? goals[0] : null;
                 }
-                
+
                 // 更新allGoals
                 allGoals = state.allGoals;
-                
+
                 _isLoading = false;
               });
-              
+
               // 完成异步操作
               completer.complete();
               subscription.cancel();
-              
+
               // 如果是子目标，通知父页面刷新
               if (widget.parentGoal != null &&
                   widget.onGoalTreeChanged != null) {
@@ -4070,45 +4457,45 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           }
         } else if (state is GoalError) {
           print('【GoalPage】BLoC删除目标失败: ${state.message}');
-          
+
           if (mounted && !completer.isCompleted) {
             setState(() {
               _error = '删除目标失败: ${state.message}';
               _isLoading = false;
             });
-            
+
             // 完成异步操作
             completer.complete();
             subscription.cancel();
           }
         }
       });
-      
+
       // 触发BLoC事件
       context.read<GoalBloc>().add(DeleteGoal(goal.id!));
-      
+
       // 添加超时处理
       Future.delayed(const Duration(seconds: 5), () {
         if (!completer.isCompleted) {
           print('【GoalPage】BLoC删除目标超时');
           subscription.cancel();
-          
+
           if (mounted) {
             setState(() {
               _error = '删除目标超时';
               _isLoading = false;
             });
           }
-          
+
           completer.complete();
         }
       });
-      
+
       // 等待操作完成
       await completer.future;
     } catch (e) {
       print('【GoalPage】BLoC删除目标出错: $e');
-      
+
       if (mounted) {
         setState(() {
           _error = '删除目标出错: $e';
@@ -4146,22 +4533,22 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   // 统一的目标树刷新方法，处理传统模式和BLoC模式
   Future<void> _refreshGoalTreeUnified() async {
     print('【GoalPage】开始统一刷新目标树');
-    
+
     // 检查BLoC适配器执行模式状态
     final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-    
+
     try {
       setState(() {
         _isLoading = true;
       });
-      
+
       if (isBlocModeEnabled) {
         // BLoC模式刷新
         await _refreshGoalTreeWithBloc();
       } else {
         // 传统模式刷新
         final startTime = DateTime.now();
-        
+
         // 记录刷新前的目标树状态
         final int oldGoalsCount = allGoals.length;
         final Map<int?, List<int?>> oldParentChildMap = {};
@@ -4174,10 +4561,10 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
         }
         print(
             '【GoalPage】刷新前的目标树: ${oldGoalsCount}个目标, ${oldParentChildMap[null]?.length ?? 0}个根目标');
-        
+
         // 获取最新的目标树
         allGoals = await _dbHelper.getGoalTree();
-        
+
         // 记录刷新后的目标树状态
         final int newGoalsCount = allGoals.length;
         final Map<int?, List<int?>> newParentChildMap = {};
@@ -4190,12 +4577,12 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
         }
         print(
             '【GoalPage】刷新后的目标树: ${newGoalsCount}个目标, ${newParentChildMap[null]?.length ?? 0}个根目标');
-        
+
         // 比较变化
         if (oldGoalsCount != newGoalsCount) {
           print('【GoalPage】目标总数变化: $oldGoalsCount -> $newGoalsCount');
         }
-        
+
         // 检查每个父目标的子目标数量变化
         final Set<int?> allParentIds = {
           ...oldParentChildMap.keys,
@@ -4209,11 +4596,11 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
                 '【GoalPage】父目标ID=$parentId 的子目标数量变化: $oldChildrenCount -> $newChildrenCount');
           }
         }
-        
+
         final endTime = DateTime.now();
         print(
             '【GoalPage】传统方式加载完成，耗时: ${endTime.difference(startTime).inMilliseconds}ms，获取 ${allGoals.length} 个目标');
-        
+
         if (mounted) {
           setState(() {
             // 更新当前页面的目标列表
@@ -4230,34 +4617,34 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
               goals = parentGoal.subGoals;
               print(
                   '【GoalPage】更新子目标列表: ${goals.length}个, 父目标ID=${widget.parentGoal!.id}, 父目标标题=${widget.parentGoal!.title}');
-              
+
               // 详细记录子目标信息
               for (var i = 0; i < goals.length; i++) {
                 print(
                     '【GoalPage】子目标[$i]: ID=${goals[i].id}, 标题=${goals[i].title}, 父ID=${goals[i].parentId}');
               }
             }
-            
+
             _isLoading = false;
           });
         }
-        
+
         // 影子模式：也刷新BLoC状态
         _blocAdapter?.refreshGoalTree(
           onSuccess: (blocAllGoals) {
             print('【影子模式】目标树刷新成功: ${blocAllGoals.length}个目标');
-            
+
             // 比较数据一致性
             if (blocAllGoals.length != allGoals.length) {
               print(
                   '【警告】目标树数据不一致: 传统=${allGoals.length}, BLoC=${blocAllGoals.length}');
             }
-            
+
             // 在影子模式下也更新本地状态，确保两种模式数据一致
             if (mounted) {
               setState(() {
                 allGoals = blocAllGoals;
-                
+
                 // 同时更新goals列表
                 if (widget.parentGoal == null) {
                   goals = allGoals;
@@ -4277,7 +4664,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           },
         );
       }
-      
+
       // 通知父组件目标树已更改
       widget.onGoalTreeChanged?.call();
     } catch (e) {
@@ -4299,16 +4686,55 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       );
       return;
     }
-    
+
     print(
         '【GoalPage】查看子目标: 父ID=${currentGoal!.id}, 子目标数量=${currentGoal!.subGoals.length}');
-    
+
     // 导航到子目标页面
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => GoalPage(
           parentGoal: currentGoal,
+          isSubGoalView: true, // 标记为子目标视图
+          onGoalTreeChanged: () {
+            // 子目标变化时刷新父页面
+            _refreshGoalTreeUnified();
+          },
+        ),
+      ),
+    ).then((_) {
+      // 返回后刷新目标树
+      _refreshGoalTreeUnified();
+    });
+  }
+
+  /// 基于BLoC状态的子条目添加方法
+  void _addSubGoalFromFullScreenWithState(GoalsLoaded state) async {
+    if (state.currentGoal == null) return;
+
+    // 显示新增子条目弹窗
+    _showAddGoalDialog();
+  }
+
+  /// 基于BLoC状态的查看子条目方法
+  void _viewSubGoalsWithState(GoalsLoaded state) {
+    if (state.currentGoal == null || state.currentGoal!.subGoals.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('当前目标没有子目标')),
+      );
+      return;
+    }
+
+    print(
+        '【GoalPage】查看子目标: 父ID=${state.currentGoal!.id}, 子目标数量=${state.currentGoal!.subGoals.length}');
+
+    // 导航到子目标页面
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => GoalPage(
+          parentGoal: state.currentGoal,
           isSubGoalView: true, // 标记为子目标视图
           onGoalTreeChanged: () {
             // 子目标变化时刷新父页面
