@@ -3,12 +3,28 @@ import '../../repository/goal_repository.dart';
 import '../../models/goal.dart';
 import 'goal_event.dart';
 import 'goal_state.dart';
+import '../transaction/ui_batch_updater.dart';
+import '../transaction/i_ui_batch_updater.dart';
 
 // BLoC实现
 class GoalBloc extends Bloc<GoalEvent, GoalState> {
   final GoalRepository repository;
+  final bool disableBatching; // 测试/降级用：禁用批处理，直接 emit
 
-  GoalBloc({required this.repository}) : super(GoalInitial()) {
+  // UI批量更新器
+  late final IUIBatchUpdater _uiBatchUpdater;
+
+  // 批量更新统计
+  int _totalEmits = 0;
+  int _batchedEmits = 0;
+
+  GoalBloc({required this.repository, this.disableBatching = false, IUIBatchUpdater? batchUpdater})
+      : super(GoalInitial()) {
+    // 初始化UI批量更新器
+    _uiBatchUpdater = batchUpdater ?? UIBatchUpdater(
+      config: UIBatchUpdateConfig.highPerformance(),
+    );
+
     on<LoadGoals>(_onLoadGoals);
     on<AddGoal>(_onAddGoal);
     on<UpdateGoal>(_onUpdateGoal);
@@ -51,18 +67,30 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
   }
 
   Future<void> _onLoadGoals(LoadGoals event, Emitter<GoalState> emit) async {
-    emit(GoalLoading());
+    emit(GoalLoading()); // 加载状态立即发射
     try {
       final goals = await repository.getGoals(parentId: event.parentId);
       final allGoals = await repository.getGoalTree();
 
-      emit(GoalsLoaded(
+      final loadedState = GoalsLoaded(
         goals: goals,
         allGoals: allGoals,
         currentGoal: goals.isNotEmpty ? goals[0] : null,
-      ));
+      );
+
+      // 选项B：测试/降级模式，直接发射并返回
+      if (disableBatching) {
+        emit(loadedState);
+        return;
+      }
+
+      // 生产模式：走批处理
+      _smartEmit(
+          loadedState,
+          emit,
+          priority: UIUpdatePriority.high); // 初始加载使用高优先级
     } catch (e) {
-      emit(GoalError('加载目标失败: $e'));
+      emit(GoalError('加载目标失败: $e')); // 错误状态立即发射
     }
   }
 
@@ -89,8 +117,8 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
         // 添加新目标到列表
         currentGoals.insert(0, event.goal);
 
-        // 发出新状态，包含新添加的目标
-        emit(GoalsLoaded(
+        // 使用UI批量更新器优化状态发射
+        final newState = GoalsLoaded(
           goals: currentGoals,
           allGoals: allGoals,
           currentGoal: event.goal,
@@ -103,14 +131,19 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
           showTime: currentState.showTime,
           showDescription: currentState.showDescription,
           showTitle: currentState.showTitle,
-        ));
+        );
+
+        // 添加UI更新项到批量更新器
+        _uiBatchUpdater.addUpdate(
+          UIUpdateItem.goalListUpdate(allGoals, () => emit(newState)),
+        );
       } else {
         // 如果没有当前状态，重新加载目标列表
         add(const LoadGoals());
       }
     } catch (e) {
       print('【GoalBloc】添加目标失败: $e');
-      emit(GoalError('添加目标失败: $e'));
+      emit(GoalError('添加目标失败: $e')); // 错误状态立即发射
     }
   }
 
@@ -139,30 +172,37 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
       bool currentGoalExists =
           goals.any((g) => g.id == currentSelectedGoal?.id);
 
-      // 发出新状态，保留当前选中的目标
-      emit(GoalsLoaded(
-        goals: goals,
-        allGoals: allGoals,
-        currentGoal: currentGoalExists
-            ? currentSelectedGoal
-            : (goals.isNotEmpty ? goals[0] : null),
-        // 保留其他状态
-        viewMode: state is GoalsLoaded ? (state as GoalsLoaded).viewMode : 0,
-        isEditingTitle: false, // 编辑完成后关闭编辑状态
-        isEditingDescription: state is GoalsLoaded
-            ? (state as GoalsLoaded).isEditingDescription
-            : false,
-        showCountdown:
-            state is GoalsLoaded ? (state as GoalsLoaded).showCountdown : false,
-        showTime: state is GoalsLoaded ? (state as GoalsLoaded).showTime : true,
-        showDescription: state is GoalsLoaded
-            ? (state as GoalsLoaded).showDescription
-            : true,
-        showTitle:
-            state is GoalsLoaded ? (state as GoalsLoaded).showTitle : true,
-      ));
+      // 使用智能批量更新
+      _smartEmit(
+          GoalsLoaded(
+            goals: goals,
+            allGoals: allGoals,
+            currentGoal: currentGoalExists
+                ? currentSelectedGoal
+                : (goals.isNotEmpty ? goals[0] : null),
+            // 保留其他状态
+            viewMode:
+                state is GoalsLoaded ? (state as GoalsLoaded).viewMode : 0,
+            isEditingTitle: false, // 编辑完成后关闭编辑状态
+            isEditingDescription: state is GoalsLoaded
+                ? (state as GoalsLoaded).isEditingDescription
+                : false,
+            showCountdown: state is GoalsLoaded
+                ? (state as GoalsLoaded).showCountdown
+                : false,
+            showTime:
+                state is GoalsLoaded ? (state as GoalsLoaded).showTime : true,
+            showDescription: state is GoalsLoaded
+                ? (state as GoalsLoaded).showDescription
+                : true,
+            showTitle:
+                state is GoalsLoaded ? (state as GoalsLoaded).showTitle : true,
+          ),
+          emit,
+          priority: UIUpdatePriority.high); // 更新操作使用高优先级
+      _uiBatchUpdater.flush();
     } catch (e) {
-      emit(GoalError('更新目标失败: $e'));
+      emit(GoalError('更新目标失败: $e')); // 错误状态立即发射
     }
   }
 
@@ -195,29 +235,38 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
             : (goals.isNotEmpty ? goals[0] : null);
       }
 
-      // 发出新状态
+      // 发出新状态（通过批处理并立即flush，确保在handler内发射）
       if (state is GoalsLoaded) {
         final currentState = state as GoalsLoaded;
-        emit(GoalsLoaded(
-          goals: goals,
-          allGoals: allGoals,
-          currentGoal: newSelectedGoal,
-          // 保留其他状态
-          viewMode: currentState.viewMode,
-          isEditingTitle: false,
-          isEditingDescription: currentState.isEditingDescription,
-          showCountdown: currentState.showCountdown,
-          showTime: currentState.showTime,
-          showDescription: currentState.showDescription,
-          showTitle: currentState.showTitle,
-        ));
+        _smartEmit(
+          GoalsLoaded(
+            goals: goals,
+            allGoals: allGoals,
+            currentGoal: newSelectedGoal,
+            // 保留其他状态
+            viewMode: currentState.viewMode,
+            isEditingTitle: false,
+            isEditingDescription: currentState.isEditingDescription,
+            showCountdown: currentState.showCountdown,
+            showTime: currentState.showTime,
+            showDescription: currentState.showDescription,
+            showTitle: currentState.showTitle,
+          ),
+          emit,
+          priority: UIUpdatePriority.high,
+        );
       } else {
-        emit(GoalsLoaded(
-          goals: goals,
-          allGoals: allGoals,
-          currentGoal: newSelectedGoal,
-        ));
+        _smartEmit(
+          GoalsLoaded(
+            goals: goals,
+            allGoals: allGoals,
+            currentGoal: newSelectedGoal,
+          ),
+          emit,
+          priority: UIUpdatePriority.high,
+        );
       }
+      _uiBatchUpdater.flush();
     } catch (e) {
       emit(GoalError('删除目标失败: $e'));
     }
@@ -243,9 +292,14 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
   void _onSelectGoal(SelectGoal event, Emitter<GoalState> emit) {
     if (state is GoalsLoaded) {
       final currentState = state as GoalsLoaded;
-      emit(currentState.copyWith(
-        currentGoal: event.goal,
-      ));
+      // 目标选择使用立即优先级，确保用户交互响应及时
+      _smartEmit(
+          currentState.copyWith(
+            currentGoal: event.goal,
+          ),
+          emit,
+          priority: UIUpdatePriority.immediate);
+      _uiBatchUpdater.flush();
     }
   }
 
@@ -253,9 +307,14 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
   void _onToggleViewMode(ToggleViewMode event, Emitter<GoalState> emit) {
     if (state is GoalsLoaded) {
       final currentState = state as GoalsLoaded;
-      emit(currentState.copyWith(
-        viewMode: event.viewMode,
-      ));
+      // UI状态切换使用正常优先级，可以批量处理
+      _smartEmit(
+          currentState.copyWith(
+            viewMode: event.viewMode,
+          ),
+          emit,
+          priority: UIUpdatePriority.normal);
+      _uiBatchUpdater.flush();
     }
   }
 
@@ -264,9 +323,14 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
       ToggleCountdownDisplay event, Emitter<GoalState> emit) {
     if (state is GoalsLoaded) {
       final currentState = state as GoalsLoaded;
-      emit(currentState.copyWith(
-        showCountdown: event.showCountdown,
-      ));
+      // UI状态切换使用正常优先级，可以批量处理
+      _smartEmit(
+          currentState.copyWith(
+            showCountdown: event.showCountdown,
+          ),
+          emit,
+          priority: UIUpdatePriority.normal);
+      _uiBatchUpdater.flush();
     }
   }
 
@@ -274,9 +338,14 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
   void _onToggleTimeDisplay(ToggleTimeDisplay event, Emitter<GoalState> emit) {
     if (state is GoalsLoaded) {
       final currentState = state as GoalsLoaded;
-      emit(currentState.copyWith(
-        showTime: event.showTime,
-      ));
+      // UI状态切换使用正常优先级，可以批量处理
+      _smartEmit(
+          currentState.copyWith(
+            showTime: event.showTime,
+          ),
+          emit,
+          priority: UIUpdatePriority.normal);
+      _uiBatchUpdater.flush();
     }
   }
 
@@ -978,5 +1047,157 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
         ));
       }
     }
+  }
+
+  /// 智能批量emit - 根据状态类型和优先级选择最佳更新策略
+  void _smartEmit(GoalState newState, Emitter<GoalState> emit,
+      {UIUpdatePriority priority = UIUpdatePriority.normal}) {
+    _totalEmits++;
+
+    // 错误状态和加载状态立即发射
+    if (newState is GoalError || newState is GoalLoading) {
+      emit(newState);
+      return;
+    }
+
+    // 根据状态类型选择更新策略
+    if (newState is GoalsLoaded) {
+      if (disableBatching) {
+        emit(newState);
+        return;
+      }
+      final updateType = _determineUpdateType(newState);
+      final updatePriority = _determineUpdatePriority(newState, priority);
+      _batchedEmits++;
+      _uiBatchUpdater.addUpdate(
+        _createUIUpdateItem(newState, updateType, updatePriority, emit),
+      );
+    } else {
+      // 其他状态直接发射
+      emit(newState);
+    }
+  }
+
+  /// 确定UI更新类型
+  UIUpdateType _determineUpdateType(GoalsLoaded state) {
+    final currentState = this.state;
+    if (currentState is! GoalsLoaded) {
+      return UIUpdateType.goalListUpdate;
+    }
+
+    // 比较状态变化类型
+    if (currentState.goals.length != state.goals.length ||
+        currentState.allGoals.length != state.allGoals.length) {
+      return UIUpdateType.goalListUpdate;
+    }
+
+    if (currentState.currentGoal?.id != state.currentGoal?.id) {
+      return UIUpdateType.goalItemUpdate;
+    }
+
+    if (currentState.viewMode != state.viewMode ||
+        currentState.showCountdown != state.showCountdown ||
+        currentState.showTime != state.showTime ||
+        currentState.showDescription != state.showDescription ||
+        currentState.showTitle != state.showTitle) {
+      return UIUpdateType.navigationUpdate;
+    }
+
+    return UIUpdateType.goalItemUpdate;
+  }
+
+  /// 确定UI更新优先级
+  UIUpdatePriority _determineUpdatePriority(
+      GoalsLoaded state, UIUpdatePriority defaultPriority) {
+    final currentState = this.state;
+    if (currentState is! GoalsLoaded) {
+      return UIUpdatePriority.high; // 初始加载高优先级
+    }
+
+    // 用户交互相关的更新使用立即优先级
+    if (currentState.currentGoal?.id != state.currentGoal?.id) {
+      return UIUpdatePriority.immediate;
+    }
+
+    // 编辑状态变化使用高优先级
+    if (currentState.isEditingTitle != state.isEditingTitle ||
+        currentState.isEditingDescription != state.isEditingDescription ||
+        currentState.isEditingDate != state.isEditingDate ||
+        currentState.isEditingImage != state.isEditingImage) {
+      return UIUpdatePriority.high;
+    }
+
+    return defaultPriority;
+  }
+
+  /// 创建UI更新项
+  UIUpdateItem _createUIUpdateItem(GoalsLoaded state, UIUpdateType type,
+      UIUpdatePriority priority, Emitter<GoalState> emit) {
+    switch (type) {
+      case UIUpdateType.goalListUpdate:
+        return UIUpdateItem.goalListUpdate(state.allGoals, () {
+          if (!emit.isDone) emit(state);
+        });
+
+      case UIUpdateType.goalItemUpdate:
+        if (state.currentGoal != null) {
+          return UIUpdateItem.goalItemUpdate(state.currentGoal!, () {
+            if (!emit.isDone) emit(state);
+          });
+        }
+        return UIUpdateItem.goalListUpdate(state.allGoals, () {
+          if (!emit.isDone) emit(state);
+        });
+
+      case UIUpdateType.statisticsUpdate:
+        return UIUpdateItem.statisticsUpdate({
+          'goalCount': state.goals.length,
+          'allGoalCount': state.allGoals.length,
+          'completedCount': state.allGoals
+              .where((g) => g.status == GoalStatus.completed)
+              .length,
+        }, () {
+          if (!emit.isDone) emit(state);
+        });
+
+      default:
+        return UIUpdateItem(
+          id: 'custom_${DateTime.now().millisecondsSinceEpoch}',
+          type: type,
+          priority: priority,
+          data: {'state': state},
+          updateCallback: () {
+            if (!emit.isDone) emit(state);
+          },
+          affectedWidgets: {'goal_page', 'goal_tree'},
+        );
+    }
+  }
+
+  /// 获取批量更新统计
+  Map<String, dynamic> getBatchUpdateStats() {
+    final stats = _uiBatchUpdater.getStats();
+    return {
+      'totalEmits': _totalEmits,
+      'batchedEmits': _batchedEmits,
+      'directEmits': _totalEmits - _batchedEmits,
+      'batchEfficiency': _totalEmits > 0 ? _batchedEmits / _totalEmits : 0.0,
+      'uiStats': {
+        'totalUpdates': stats.totalUpdates,
+        'batchedUpdates': stats.batchedUpdates,
+        'skippedUpdates': stats.skippedUpdates,
+        'batchRate': stats.batchRate,
+        'skipRate': stats.skipRate,
+        'averageProcessingTime': stats.averageProcessingTime.inMilliseconds,
+        'efficiencyLevel': stats.efficiencyLevel,
+      },
+    };
+  }
+
+  @override
+  Future<void> close() {
+    // 清理UI批量更新器
+    _uiBatchUpdater.dispose();
+    return super.close();
   }
 }
