@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:provider/provider.dart';
 import '../views/goal_tree_view.dart'; // 导入GoalTreeView
 import '../bloc/explore/explore_bloc.dart';
 import '../bloc/explore/explore_event.dart';
@@ -28,35 +27,37 @@ class ExplorePage extends StatefulWidget {
 }
 
 class _ExplorePageState extends State<ExplorePage> {
-  /// 当前视图模式
-  ViewMode _currentViewMode = ViewMode.grid;
-  
   // BLoC适配器 - 影子模式实现
   late ExplorePageBlocAdapter _blocAdapter;
 
   @override
   void initState() {
     super.initState();
-    
+
     // 初始化BLoC适配器，默认为影子模式（不执行BLoC操作）
-    _blocAdapter = ExplorePageBlocAdapter(context, 
-      logLevel: 1,  // 只输出关键日志
-      executeMode: false,  // 默认不执行BLoC操作
-      enablePerformanceMonitoring: true,  // 启用性能监控
+    _blocAdapter = ExplorePageBlocAdapter(
+      context,
+      logLevel: 1, // 只输出关键日志
+      executeMode: false, // 默认不执行BLoC操作
+      enablePerformanceMonitoring: true, // 启用性能监控
     );
-    
+
+    // 跨页面同步将通过BLoC事件自动处理
+
     // 加载意识卡片
     context.read<ExploreBloc>().add(FetchExploreCards());
     // 加载目标数据
     context.read<GoalBloc>().add(const LoadGoals());
     context.read<GoalBloc>().add(RefreshGoalTree());
-    
+
     // 影子模式：通过BLoC适配器加载卡片
     _blocAdapter.loadExploreCards(
       onSuccess: (cards) {
         if (kDebugMode) {
           print('【影子模式】BLoC加载卡片成功: ${cards.length}个卡片');
         }
+        // 通知跨页面同步 - 使用正确的方法名
+        // _syncAdapter.requestExploreDataRefresh();
       },
       onError: (error) {
         if (kDebugMode) {
@@ -74,18 +75,18 @@ class _ExplorePageState extends State<ExplorePage> {
     }
     super.dispose();
   }
-  
+
   @override
   Widget build(BuildContext context) {
     // 获取当前登录状态
     final authState = context.watch<AuthBloc>().state;
     final isLoggedIn = authState is AuthAuthenticated;
-    
+
     // 获取目标数据
     final goalState = context.watch<GoalBloc>().state;
-    final List<Goal> goals = goalState is GoalsLoaded ? goalState.goals : [];
-    final List<Goal> allGoals = goalState is GoalsLoaded ? goalState.allGoals : [];
-    
+    final List<Goal> allGoals =
+        goalState is GoalsLoaded ? goalState.allGoals : [];
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -181,7 +182,7 @@ class _ExplorePageState extends State<ExplorePage> {
       body: _buildBody(),
     );
   }
-  
+
   /// 构建页面主体
   Widget _buildBody() {
     return BlocBuilder<ExploreBloc, ExploreState>(
@@ -189,8 +190,8 @@ class _ExplorePageState extends State<ExplorePage> {
         if (state is ExploreLoading) {
           return const Center(child: CircularProgressIndicator());
         } else if (state is ExploreLoaded) {
-          // 根据视图模式显示不同布局
-          switch (_currentViewMode) {
+          // 根据BLoC状态中的视图模式显示不同布局
+          switch (state.viewMode) {
             case ViewMode.grid:
               return _buildGridView(state);
             case ViewMode.fullScreen:
@@ -204,13 +205,13 @@ class _ExplorePageState extends State<ExplorePage> {
             ),
           );
         }
-        
+
         // 默认显示空白页面
         return const Center(child: Text('暂无意识卡片'));
       },
     );
   }
-  
+
   /// 构建网格视图
   Widget _buildGridView(ExploreLoaded state) {
     return GridView.builder(
@@ -228,7 +229,7 @@ class _ExplorePageState extends State<ExplorePage> {
       },
     );
   }
-  
+
   /// 构建列表视图
   Widget _buildListView(ExploreLoaded state) {
     return ListView.builder(
@@ -243,13 +244,13 @@ class _ExplorePageState extends State<ExplorePage> {
       },
     );
   }
-  
+
   /// 构建全屏视图
   Widget _buildFullscreenView(ExploreLoaded state) {
     if (state.cards.isEmpty) {
       return const Center(child: Text('暂无意识卡片'));
     }
-    
+
     return PageView.builder(
       itemCount: state.cards.length,
       itemBuilder: (context, index) {
@@ -258,7 +259,7 @@ class _ExplorePageState extends State<ExplorePage> {
       },
     );
   }
-  
+
   /// 构建卡片（网格视图）
   Widget _buildCard(ExploreCard card) {
     return Card(
@@ -286,11 +287,12 @@ class _ExplorePageState extends State<ExplorePage> {
                       : null,
                 ),
                 child: card.imagePath.isEmpty
-                    ? const Center(child: Icon(Icons.image, size: 40, color: Colors.grey))
+                    ? const Center(
+                        child: Icon(Icons.image, size: 40, color: Colors.grey))
                     : null,
               ),
             ),
-            
+
             // 卡片内容
             Expanded(
               flex: 2,
@@ -327,7 +329,7 @@ class _ExplorePageState extends State<ExplorePage> {
       ),
     );
   }
-  
+
   /// 构建卡片（列表视图）
   Widget _buildHorizontalCard(ExploreCard card) {
     return Card(
@@ -354,10 +356,11 @@ class _ExplorePageState extends State<ExplorePage> {
                     : null,
               ),
               child: card.imagePath.isEmpty
-                  ? const Center(child: Icon(Icons.image, size: 40, color: Colors.grey))
+                  ? const Center(
+                      child: Icon(Icons.image, size: 40, color: Colors.grey))
                   : null,
             ),
-            
+
             // 卡片内容
             Expanded(
               child: Padding(
@@ -393,7 +396,7 @@ class _ExplorePageState extends State<ExplorePage> {
       ),
     );
   }
-  
+
   /// 构建卡片（全屏视图）
   Widget _buildFullscreenCard(ExploreCard card) {
     return Container(
@@ -413,7 +416,7 @@ class _ExplorePageState extends State<ExplorePage> {
             end: Alignment.bottomCenter,
             colors: [
               Colors.transparent,
-              Colors.black.withOpacity(0.7),
+              Colors.black.withValues(alpha: 0.7),
             ],
             stops: const [0.6, 1.0],
           ),
@@ -445,7 +448,8 @@ class _ExplorePageState extends State<ExplorePage> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: Colors.black,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -457,46 +461,57 @@ class _ExplorePageState extends State<ExplorePage> {
       ),
     );
   }
-  
-  /// 切换视图模式
+
+  /// 切换视图模式 - 完全使用BLoC状态管理
   void _toggleViewMode() {
-    setState(() {
-      _currentViewMode = _currentViewMode == ViewMode.grid
+    // 获取当前ExploreBloc状态
+    final exploreState = context.read<ExploreBloc>().state;
+    if (exploreState is ExploreLoaded) {
+      // 计算新的视图模式
+      final newViewMode = exploreState.viewMode == ViewMode.grid
           ? ViewMode.fullScreen
           : ViewMode.grid;
-    });
-    
-    // 影子模式：通过BLoC适配器切换视图模式
-    _blocAdapter.changeViewMode(
-      viewMode: _currentViewMode,
-      onSuccess: () {
-        if (kDebugMode) {
-          print('【影子模式】BLoC切换视图模式成功: $_currentViewMode');
-        }
-      },
-      onError: (error) {
-        if (kDebugMode) {
-          print('【影子模式】BLoC切换视图模式失败: $error');
-        }
-      },
-    );
-  }
-  
-  /// 获取当前视图模式图标
-  IconData _getViewModeIcon() {
-    switch (_currentViewMode) {
-      case ViewMode.grid:
-        return Icons.view_module;
-      case ViewMode.fullScreen:
-        return Icons.fullscreen;
+
+      // 通过BLoC事件切换视图模式
+      context.read<ExploreBloc>().add(ChangeViewMode(newViewMode));
+
+      // 影子模式：通过BLoC适配器切换视图模式
+      _blocAdapter.changeViewMode(
+        viewMode: newViewMode,
+        onSuccess: () {
+          if (kDebugMode) {
+            print('【影子模式】BLoC切换视图模式成功: $newViewMode');
+          }
+        },
+        onError: (error) {
+          if (kDebugMode) {
+            print('【影子模式】BLoC切换视图模式失败: $error');
+          }
+        },
+      );
     }
   }
-  
+
+  /// 获取当前视图模式图标 - 基于BLoC状态
+  IconData _getViewModeIcon() {
+    final exploreState = context.watch<ExploreBloc>().state;
+    if (exploreState is ExploreLoaded) {
+      switch (exploreState.viewMode) {
+        case ViewMode.grid:
+          return Icons.view_module;
+        case ViewMode.fullScreen:
+          return Icons.fullscreen;
+      }
+    }
+    // 默认图标
+    return Icons.view_module;
+  }
+
   /// 处理卡片点击
   void _onCardTap(ExploreCard card) {
     // 触发使用卡片事件
     context.read<ExploreBloc>().add(UseCard(card));
-    
+
     // 影子模式：通过BLoC适配器选择卡片
     _blocAdapter.selectCard(
       card: card,
@@ -512,4 +527,4 @@ class _ExplorePageState extends State<ExplorePage> {
       },
     );
   }
-} 
+}

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import 'dart:io';
+// import 'package:image_picker/image_picker.dart'; // 已移除
+// import 'dart:io'; // 已移除
 
 class ImagePickerDialog extends StatelessWidget {
   final int membershipStatus; // 0-未登录，1-普通用户，2-会员用户
@@ -172,91 +172,30 @@ class ImagePickerDialog extends StatelessWidget {
                 ),
               ),
             ),
-            // 底部按钮 - 从本地相册选择
+            // 底部提示 - 相册选择功能已移除
             Padding(
               padding: const EdgeInsets.all(24),
-              child: ElevatedButton.icon(
-                onPressed: () async {
-                  Navigator.pop(context);
-
-                  // 打开系统相册
-                  final ImagePicker picker = ImagePicker();
-                  try {
-                    // 显示选择对话框
-                    showDialog(
-                      context: context,
-                      builder: (BuildContext context) {
-                        return SimpleDialog(
-                          title: const Text('选择媒体类型'),
-                          children: <Widget>[
-                            SimpleDialogOption(
-                              onPressed: () async {
-                                Navigator.pop(context);
-                                final XFile? image = await picker.pickImage(
-                                    source: ImageSource.gallery);
-                                if (image != null) {
-                                  onImageSelected(image.path, isVideo: false);
-                                }
-                              },
-                              child: const Text('选择图片'),
-                            ),
-                            SimpleDialogOption(
-                              onPressed: () async {
-                                Navigator.pop(context);
-                                final XFile? video = await picker.pickVideo(
-                                    source: ImageSource.gallery);
-                                if (video != null) {
-                                  // 验证视频文件是否存在
-                                  final File videoFile = File(video.path);
-                                  print('选择的视频文件路径: ${video.path}');
-
-                                  if (await videoFile.exists()) {
-                                    print(
-                                        '视频文件存在，大小: ${await videoFile.length()} 字节');
-                                    onImageSelected(video.path, isVideo: true);
-                                  } else {
-                                    print('错误: 视频文件不存在: ${video.path}');
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        const SnackBar(
-                                            content: Text('无法访问选择的视频文件')),
-                                      );
-                                    }
-                                  }
-                                }
-                              },
-                              child: const Text('选择视频'),
-                            ),
-                          ],
-                        );
-                      },
-                    );
-                  } catch (e) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('选择媒体文件失败，请重试')),
-                      );
-                    }
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey[300]!),
                 ),
-                icon: const Icon(Icons.photo_library),
-                label: const Text(
-                  '从相册选择',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    fontFamily: 'STZhongsong',
-                  ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.grey[600]),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        '相册选择功能暂时不可用，请从上方默认图片中选择',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),

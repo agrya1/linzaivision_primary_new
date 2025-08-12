@@ -3,5 +3,6 @@
         "applogo",
         "linzaiecho",
         "linzaivision"
-    ]
+    ],
+    "cmake.sourceDirectory": "C:/App/project/linzai/linzaivision_primary_new/linux"
 }

@@ -5,6 +5,7 @@ import 'goal_event.dart';
 import 'goal_state.dart';
 import '../transaction/ui_batch_updater.dart';
 import '../transaction/i_ui_batch_updater.dart';
+import '../../utils/ui_state_performance_monitor.dart';
 
 // BLoC实现
 class GoalBloc extends Bloc<GoalEvent, GoalState> {
@@ -68,6 +69,7 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
 
   Future<void> _onLoadGoals(LoadGoals event, Emitter<GoalState> emit) async {
     emit(GoalLoading()); // 加载状态立即发射
+
     try {
       final goals = await repository.getGoals(parentId: event.parentId);
       final allGoals = await repository.getGoalTree();
@@ -78,8 +80,9 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
         currentGoal: goals.isNotEmpty ? goals[0] : null,
       );
 
-      // 选项B：测试/降级模式，直接发射并返回
-      if (disableBatching) {
+      // 临时修复：强制使用直接发射模式，绕过批处理问题
+      const bool forceDirectEmit = true;
+      if (disableBatching || forceDirectEmit) {
         emit(loadedState);
         return;
       }
@@ -365,9 +368,18 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
       ToggleTitleDisplay event, Emitter<GoalState> emit) {
     if (state is GoalsLoaded) {
       final currentState = state as GoalsLoaded;
-      emit(currentState.copyWith(
-        showTitle: event.showTitle,
-      ));
+
+      // 批次1灰度：性能监控结束
+      UIStatePerformanceMonitor.endMeasure('title_toggle');
+
+      // 统一处理：immediate优先级 + 立即flush
+      _smartEmit(
+          currentState.copyWith(showTitle: event.showTitle),
+          emit,
+          priority: UIUpdatePriority.immediate);
+      _uiBatchUpdater.flush();
+
+      print('【批次1灰度】BLoC处理ToggleTitleDisplay: ${event.showTitle}');
     }
   }
 
@@ -449,7 +461,7 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
     }
   }
 
-  // 保存描述
+  // 保存描述（优化版本：直接状态更新，避免重新加载）
   Future<void> _onSaveDescription(
       SaveDescription event, Emitter<GoalState> emit) async {
     if (state is GoalsLoaded) {
@@ -458,9 +470,6 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
 
       if (currentGoal != null) {
         try {
-          // 保存当前状态，以便稍后恢复当前选中的目标
-          Goal? currentSelectedGoal = currentState.currentGoal;
-
           // 更新描述
           final updatedGoal = currentGoal.copyWith(
             description: event.description,
@@ -469,36 +478,25 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
           // 保存到数据库
           await repository.updateGoal(updatedGoal);
 
-          // 重新加载目标列表，但保留当前选中的目标
-          final goals = await repository.getGoals(parentId: null);
-          final allGoals = await repository.getGoalTree();
+          // 直接更新状态，避免重新加载导致的UI延迟
+          final updatedGoals = currentState.goals.map((goal) {
+            return goal.id == updatedGoal.id ? updatedGoal : goal;
+          }).toList();
 
-          // 如果更新的是当前选中的目标，则使用更新后的目标
-          if (currentSelectedGoal != null &&
-              currentSelectedGoal.id == updatedGoal.id) {
-            currentSelectedGoal = updatedGoal;
-          }
+          final updatedAllGoals = currentState.allGoals.map((goal) {
+            return goal.id == updatedGoal.id ? updatedGoal : goal;
+          }).toList();
 
-          // 确保当前选中的目标仍然存在于加载的目标中
-          bool currentGoalExists =
-              goals.any((g) => g.id == currentSelectedGoal?.id);
-
-          // 发出新状态，保留当前选中的目标
-          emit(GoalsLoaded(
-            goals: goals,
-            allGoals: allGoals,
-            currentGoal: currentGoalExists
-                ? currentSelectedGoal
-                : (goals.isNotEmpty ? goals[0] : null),
-            // 保留其他状态
-            viewMode: currentState.viewMode,
-            isEditingTitle: currentState.isEditingTitle,
+          // 立即发出新状态
+          emit(currentState.copyWith(
+            goals: updatedGoals,
+            allGoals: updatedAllGoals,
+            currentGoal: updatedGoal,
             isEditingDescription: false, // 编辑完成后关闭编辑状态
-            showCountdown: currentState.showCountdown,
-            showTime: currentState.showTime,
-            showDescription: currentState.showDescription,
-            showTitle: currentState.showTitle,
+            editingDescriptionText: null, // 清空编辑文本
           ));
+
+          print('【批次2优化】描述保存成功，立即更新UI: ${event.description}');
         } catch (e) {
           emit(GoalError('保存描述失败: $e'));
           emit(currentState); // 恢复原状态

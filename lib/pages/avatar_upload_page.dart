@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:io';
-import 'package:image_picker/image_picker.dart';
 import 'package:linzaivision_primary/services/auth_service.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -16,16 +14,19 @@ class AvatarUploadPage extends StatefulWidget {
 }
 
 class _AvatarUploadPageState extends State<AvatarUploadPage> {
-  File? _imageFile;
-  final ImagePicker _picker = ImagePicker();
-  bool _isUploading = false;
+  @override
+  void initState() {
+    super.initState();
+    // 加载用户资料
+    context.read<ProfileBloc>().add(const LoadProfile());
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          '修改头像',
+          '头像设置',
           style: TextStyle(
             color: Colors.black,
             fontWeight: FontWeight.w600,
@@ -39,25 +40,12 @@ class _AvatarUploadPageState extends State<AvatarUploadPage> {
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      body: BlocConsumer<ProfileBloc, ProfileState>(
-        listener: (context, state) {
-          if (state is ProfileError) {
-            // 显示错误消息
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(state.message)),
-            );
-          } else if (state is ProfileLoaded && _isUploading) {
-            // 上传成功，返回上一页
-            _isUploading = false;
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('头像上传成功')),
-            );
-            Navigator.of(context).pop(true);
-          }
-        },
+      body: BlocBuilder<ProfileBloc, ProfileState>(
         builder: (context, state) {
-          final bool isUpdating = state is AvatarUpdating;
-          
+          if (state is ProfileLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
           return Consumer<AuthService>(
             builder: (context, authService, child) {
               return SingleChildScrollView(
@@ -67,47 +55,49 @@ class _AvatarUploadPageState extends State<AvatarUploadPage> {
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       const SizedBox(height: 30),
-                      // 显示当前头像或已选择的图片
+                      // 头像预览
                       Center(
-                        child: Stack(
+                        child: Container(
+                          width: 150,
+                          height: 150,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.grey[200],
+                          ),
+                          child: const Icon(
+                            Icons.person,
+                            size: 80,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 40),
+                      const Text(
+                        '头像上传功能暂时不可用',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      // 提示信息
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.blue[50],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.blue[200]!),
+                        ),
+                        child: Row(
                           children: [
-                            Container(
-                              width: 150,
-                              height: 150,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.grey[200],
-                                image: _imageFile != null
-                                    ? DecorationImage(
-                                        image: FileImage(_imageFile!),
-                                        fit: BoxFit.cover,
-                                      )
-                                    : null,
-                              ),
-                              child: _imageFile == null
-                                  ? const Icon(
-                                      Icons.person,
-                                      size: 80,
-                                      color: Colors.grey,
-                                    )
-                                  : null,
-                            ),
-                            Positioned(
-                              bottom: 0,
-                              right: 0,
-                              child: InkWell(
-                                onTap: _showImageSourceActionSheet,
-                                child: Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(context).primaryColor,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.camera_alt,
-                                    color: Colors.white,
-                                    size: 24,
-                                  ),
+                            Icon(Icons.info_outline, color: Colors.blue[600]),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Text(
+                                '头像上传功能正在维护中，敬请期待',
+                                style: TextStyle(
+                                  color: Colors.blue,
+                                  fontSize: 14,
                                 ),
                               ),
                             ),
@@ -115,51 +105,25 @@ class _AvatarUploadPageState extends State<AvatarUploadPage> {
                         ),
                       ),
                       const SizedBox(height: 40),
-                      const Text(
-                        '上传一张清晰的照片作为头像',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.grey,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      // 上传按钮
-                      ElevatedButton(
-                        onPressed: _imageFile != null && !isUpdating
-                            ? () => _uploadAvatar()
-                            : null,
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 50, vertical: 15),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30),
+                      // 返回按钮
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Theme.of(context).primaryColor,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 15),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          child: const Text(
+                            '返回',
+                            style: TextStyle(fontSize: 16),
                           ),
                         ),
-                        child: isUpdating
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  color: Colors.white,
-                                  strokeWidth: 2.0,
-                                ),
-                              )
-                            : const Text(
-                                '保存头像',
-                                style: TextStyle(fontSize: 16),
-                              ),
                       ),
-                      if (_imageFile != null) ...[
-                        const SizedBox(height: 15),
-                        TextButton(
-                          onPressed: () {
-                            setState(() {
-                              _imageFile = null;
-                            });
-                          },
-                          child: const Text('取消选择'),
-                        ),
-                      ],
                     ],
                   ),
                 ),
@@ -169,62 +133,5 @@ class _AvatarUploadPageState extends State<AvatarUploadPage> {
         },
       ),
     );
-  }
-
-  // 显示选择图片来源的底部菜单
-  void _showImageSourceActionSheet() {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) {
-        return SafeArea(
-          child: Wrap(
-            children: [
-              ListTile(
-                leading: const Icon(Icons.photo_camera),
-                title: const Text('拍照'),
-                onTap: () {
-                  _getImage(ImageSource.camera);
-                  Navigator.of(context).pop();
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.photo_library),
-                title: const Text('从相册选择'),
-                onTap: () {
-                  _getImage(ImageSource.gallery);
-                  Navigator.of(context).pop();
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // 获取图片
-  Future<void> _getImage(ImageSource source) async {
-    final pickedFile = await _picker.pickImage(
-      source: source,
-      imageQuality: 80,
-    );
-
-    if (pickedFile != null) {
-      setState(() {
-        _imageFile = File(pickedFile.path);
-      });
-    }
-  }
-
-  // 上传头像
-  Future<void> _uploadAvatar() async {
-    if (_imageFile == null) return;
-
-    setState(() {
-      _isUploading = true;
-    });
-
-    // 使用 ProfileBloc 上传头像
-    context.read<ProfileBloc>().add(UpdateAvatar(_imageFile!));
   }
 }

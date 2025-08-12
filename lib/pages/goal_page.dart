@@ -1,12 +1,12 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:linzaivision_primary/models/goal.dart';
 import 'package:linzaivision_primary/pages/settings_page.dart';
-import 'package:linzaivision_primary/widgets/search/goal_search_delegate.dart';
-import 'package:linzaivision_primary/widgets/search/goal_search_delegate_bloc.dart';
+// 已移除：搜索功能相关导入
 import 'package:linzaivision_primary/views/full_screen_view.dart';
 import 'package:linzaivision_primary/views/grid_view.dart';
 import 'package:linzaivision_primary/views/timeline_view.dart';
-import 'package:linzaivision_primary/views/goal_tree_view.dart';
+import 'package:linzaivision_primary/views/goal_tree_view_bloc.dart';
 import 'package:linzaivision_primary/views/explore_view.dart';
 import 'package:linzaivision_primary/widgets/menus/goal_menus.dart';
 import 'package:linzaivision_primary/database/database_helper.dart';
@@ -16,6 +16,7 @@ import 'package:linzaivision_primary/widgets/common/share_dialog.dart';
 import 'package:linzaivision_primary/services/auth_service.dart';
 import 'package:linzaivision_primary/widgets/pickers/image_picker_dialog.dart';
 import 'package:linzaivision_primary/widgets/pickers/membership_prompt_dialog.dart';
+import 'package:linzaivision_primary/widgets/dialogs/add_goal_dialog_bloc.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
@@ -25,13 +26,17 @@ import 'goal_page_bloc_adapter.dart';
 // 导入错误处理工具
 import '../utils/error_handler.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../bloc/search/search_bloc.dart';
+// 已移除：搜索BLoC导入
 import '../routes/navigation_service.dart'; // 导入NavigationService
+import '../bloc/component/component_communication_bloc.dart';
+import '../bloc/component/component_communication_events.dart' as comm_events;
 import '../routes/app_routes.dart'; // 导入AppRoutes
 import '../bloc/goal/goal_bloc.dart';
 import '../bloc/goal/goal_event.dart';
 import '../bloc/goal/goal_state.dart';
 import '../utils/bloc_feature_toggles.dart';
+import '../utils/ui_state_performance_monitor.dart';
+import '../widgets/appbar/view_switch_action.dart';
 // 导入接口定义
 import '../interfaces/goal_page_interfaces.dart';
 
@@ -65,13 +70,27 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
 
   // 编辑状态控制
   bool _isEditingTitle = false;
+  bool _isEditingDescription = false;
   final TextEditingController _titleController = TextEditingController();
+  // 批次2重构：添加描述控制器，与标题编辑保持一致
+  final TextEditingController _descriptionController = TextEditingController();
+
+  // 防止无限循环的标志
+  bool _isRefreshing = false;
+
+  // 性能优化：数据缓存
+  List<Goal>? _cachedAllGoals;
+  DateTime? _lastCacheTime;
+  static const Duration _cacheValidDuration = Duration(minutes: 5);
+
+  // 性能优化：批处理状态更新
+  Timer? _stateUpdateTimer;
+  Map<String, dynamic> _pendingStateUpdates = {};
 
   /// 用户会员状态（模拟数据，实际应该从用户系统获取）
   int _membershipStatus = 0;
 
-  // 添加倒计时显示状态变量:
-  bool _showCountdown = false; // 默认不显示倒计时
+  // 倒计时功能已移除，等架构稳定后重新实现
   // 添加时间显示状态变量:
   bool _showTime = true; // 默认显示时间
   // 添加描述显示状态变量:
@@ -103,6 +122,13 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
     // 初始化空目标列表
     goals = [];
 
+    // 阶段1+批次1：启用只读渲染和UI状态写路径开关
+    // 使用 WidgetsBinding.instance.addPostFrameCallback 确保异步初始化
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeBlocToggles();
+    });
+
     // 初始化BLoC适配器，默认为影子模式（不执行BLoC操作）
     _blocAdapter = GoalPageBlocAdapter(
       context,
@@ -115,6 +141,9 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkLoginStatus();
     });
+
+    // 清理数据库错误数据
+    _cleanupDatabaseErrors();
 
     // 加载数据
     _loadGoals();
@@ -142,9 +171,11 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         // 延迟2秒确保初始化完成
         await Future.delayed(const Duration(seconds: 2));
-        if (mounted && allGoals.isEmpty) {
+        if (mounted && allGoals.isEmpty && !_isRefreshing) {
           print('检测到树视图数据为空，尝试重新加载');
+          _isRefreshing = true;
           await _refreshGoalTree();
+          _isRefreshing = false;
         }
       });
     }
@@ -156,6 +187,208 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
 
     // 加载BLoC功能开关设置
     _featureToggles.loadSettings();
+  }
+
+  @override
+  void dispose() {
+    // 性能优化：清理资源
+    _stateUpdateTimer?.cancel();
+    _titleController.dispose();
+    super.dispose();
+  }
+
+
+
+  // 阶段1+批次1：启用只读渲染和UI状态写路径开关
+  void _initializeBlocToggles() async {
+    print('【调试】开始初始化BLoC开关...');
+    await _featureToggles.loadSettings();
+    print('【调试】开关设置已加载');
+
+    // 阶段1：只读渲染开关（必须保持启用）
+    await _featureToggles.setFeatureEnabled('displayOptionsBlocDriven', true);
+    await _featureToggles.setFeatureEnabled('fullScreenBlocDriven', true);
+    await _featureToggles.setFeatureEnabled('viewSwitching', true);
+    await _featureToggles.setFeatureEnabled('appBarBlocDriven', true);
+
+    // 批次1灰度：启用showTitle写路径BLoC化
+    await _featureToggles.setFeatureEnabled('titleDisplayWriteThrough', true);
+    // 批次1灰度：启用showDescription写路径BLoC化
+    await _featureToggles.setFeatureEnabled('descriptionDisplayWriteThrough', true);
+    // 批次1灰度：启用showTime写路径BLoC化
+    await _featureToggles.setFeatureEnabled('timeDisplayWriteThrough', true);
+    // 批次1灰度：启用viewMode写路径BLoC化
+    await _featureToggles.setFeatureEnabled('viewModeWriteThrough', true);
+
+    // 批次2灰度：启用目标选择写路径BLoC化
+    await _featureToggles.setFeatureEnabled('currentGoalSelectionWriteThrough', true);
+    // 批次2灰度：启用标题编辑写路径BLoC化
+    await _featureToggles.setFeatureEnabled('titleEditingWriteThrough', true);
+    // 批次2灰度：启用描述编辑写路径BLoC化
+    await _featureToggles.setFeatureEnabled('descriptionEditingWriteThrough', true);
+
+    print('【GoalPage】阶段1+批次1+批次2开关已启用');
+    print('  displayOptionsBlocDriven: ${_featureToggles.displayOptionsBlocDriven}');
+    print('  appBarBlocDriven: ${_featureToggles.appBarBlocDriven}');
+    print('  titleDisplayWriteThrough: ${_featureToggles.titleDisplayWriteThrough}');
+    print('  descriptionDisplayWriteThrough: ${_featureToggles.descriptionDisplayWriteThrough}');
+    print('  timeDisplayWriteThrough: ${_featureToggles.timeDisplayWriteThrough}');
+    print('  viewModeWriteThrough: ${_featureToggles.viewModeWriteThrough}');
+    print('  currentGoalSelectionWriteThrough: ${_featureToggles.currentGoalSelectionWriteThrough}');
+    print('  titleEditingWriteThrough: ${_featureToggles.titleEditingWriteThrough}');
+    print('  descriptionEditingWriteThrough: ${_featureToggles.descriptionEditingWriteThrough}');
+
+    // 验证开关组合（批次1+批次2）
+    final batch1Valid = _featureToggles.titleDisplayWriteThrough &&
+        _featureToggles.descriptionDisplayWriteThrough &&
+        _featureToggles.timeDisplayWriteThrough &&
+        _featureToggles.viewModeWriteThrough &&
+        _featureToggles.displayOptionsBlocDriven &&
+        _featureToggles.appBarBlocDriven;
+
+    final batch2Valid = _featureToggles.currentGoalSelectionWriteThrough &&
+        _featureToggles.titleEditingWriteThrough &&
+        _featureToggles.descriptionEditingWriteThrough;
+
+    if (batch1Valid && batch2Valid) {
+      print('【批次1+批次2灰度】✅ 开关组合验证通过');
+    } else {
+      print('【批次1+批次2灰度】❌ 开关组合验证失败，自动回退');
+      if (!batch1Valid) {
+        await _featureToggles.setFeatureEnabled('titleDisplayWriteThrough', false);
+        await _featureToggles.setFeatureEnabled('descriptionDisplayWriteThrough', false);
+        await _featureToggles.setFeatureEnabled('timeDisplayWriteThrough', false);
+        await _featureToggles.setFeatureEnabled('viewModeWriteThrough', false);
+      }
+      if (!batch2Valid) {
+        await _featureToggles.setFeatureEnabled('currentGoalSelectionWriteThrough', false);
+        await _featureToggles.setFeatureEnabled('titleEditingWriteThrough', false);
+        await _featureToggles.setFeatureEnabled('descriptionEditingWriteThrough', false);
+      }
+    }
+  }
+
+  // 性能优化：检查缓存是否有效
+  bool _isCacheValid() {
+    if (_cachedAllGoals == null || _lastCacheTime == null) {
+      return false;
+    }
+    return DateTime.now().difference(_lastCacheTime!) < _cacheValidDuration;
+  }
+
+  // 性能优化：更新缓存
+  void _updateCache(List<Goal> goals) {
+    _cachedAllGoals = List.from(goals);
+    _lastCacheTime = DateTime.now();
+    print('【性能优化】缓存已更新，包含 ${goals.length} 个目标');
+  }
+
+  // 性能优化：批处理状态更新
+  void _batchStateUpdate(String key, dynamic value) {
+    _pendingStateUpdates[key] = value;
+
+    // 取消之前的定时器
+    _stateUpdateTimer?.cancel();
+
+    // 设置新的定时器，延迟50ms执行批处理更新
+    _stateUpdateTimer = Timer(const Duration(milliseconds: 50), () {
+      if (mounted && _pendingStateUpdates.isNotEmpty) {
+        setState(() {
+          _pendingStateUpdates.forEach((key, value) {
+            switch (key) {
+              case 'allGoals':
+                allGoals = value as List<Goal>;
+                break;
+              case 'goals':
+                goals = value as List<Goal>;
+                break;
+              case 'currentGoal':
+                currentGoal = value as Goal?;
+                break;
+              case 'currentView':
+                currentView = value as int;
+                break;
+              case '_isLoading':
+                _isLoading = value as bool;
+                break;
+              case '_showTitle':
+                _showTitle = value as bool;
+                break;
+              case '_showDescription':
+                _showDescription = value as bool;
+                break;
+              case '_showTime':
+                _showTime = value as bool;
+                break;
+              // 倒计时功能已移除
+            }
+          });
+        });
+        _pendingStateUpdates.clear();
+        print('【性能优化】批处理更新了 ${_pendingStateUpdates.length} 个状态');
+      }
+    });
+  }
+
+  // 重置数据库用于测试
+  Future<void> _resetDatabaseForTesting() async {
+    try {
+      print('【GoalPage】开始重置数据库进行测试');
+      await _dbHelper.resetDatabase();
+
+      // 清理缓存
+      _cachedAllGoals = null;
+      _lastCacheTime = null;
+
+      // 重置状态
+      setState(() {
+        goals = [];
+        allGoals = [];
+        currentGoal = null;
+        _isLoading = true;
+      });
+
+      print('【GoalPage】数据库重置完成，开始重新加载');
+      await _loadGoals();
+    } catch (e) {
+      print('【GoalPage】重置数据库失败: $e');
+    }
+  }
+
+  // 清理数据库中的错误数据
+  Future<void> _cleanupDatabaseErrors() async {
+    try {
+      print('【GoalPage】开始清理数据库错误数据');
+
+      // 获取所有目标
+      final allTargets = await _dbHelper.getGoalTree();
+
+      // 查找孤儿目标（父ID指向不存在的目标）
+      final orphanGoals = <Goal>[];
+      for (final goal in allTargets) {
+        if (goal.parentId != null) {
+          final parentExists = allTargets.any((g) => g.id == goal.parentId);
+          if (!parentExists) {
+            orphanGoals.add(goal);
+          }
+        }
+      }
+
+      // 修复孤儿目标：将它们设为根目标
+      for (final orphan in orphanGoals) {
+        print('【GoalPage】修复孤儿目标: ${orphan.title} (ID: ${orphan.id})');
+        final fixedGoal = orphan.copyWith(parentId: null);
+        await _dbHelper.updateGoal(fixedGoal);
+      }
+
+      if (orphanGoals.isNotEmpty) {
+        print('【GoalPage】已修复 ${orphanGoals.length} 个孤儿目标');
+        // 重新加载数据
+        await _loadGoals();
+      }
+    } catch (e) {
+      print('【GoalPage】清理数据库错误失败: $e');
+    }
   }
 
   // 初始化BLoC适配器
@@ -332,42 +565,44 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
         // 重新从数据库加载数据以确保数据完整
         final reloadedGoals =
             await _dbHelper.getGoals(parentId: widget.parentGoal?.id);
-        // 第二阶段迁移：使用BLoC事件加载目标数据，移除setState
-        final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-        if (isBlocModeEnabled) {
-          // 使用BLoC事件加载目标
-          context.read<GoalBloc>().add(LoadGoals());
-          if (reloadedGoals.isNotEmpty) {
-            context.read<GoalBloc>().add(SelectGoal(reloadedGoals[0]));
-          }
-        } else {
-          setState(() {
-            goals = reloadedGoals;
-            if (goals.isNotEmpty && currentGoal == null) {
-              currentGoal = goals[0];
-            }
-            _isLoading = false;
-          });
-        }
 
+        // 先刷新目标树
         await _refreshGoalTree();
-      } else {
-        // 第二阶段迁移：使用BLoC事件加载目标数据，移除setState
-        final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-        if (isBlocModeEnabled) {
-          // 使用BLoC事件加载目标
-          context.read<GoalBloc>().add(LoadGoals());
-          if (loadedGoals.isNotEmpty) {
-            context.read<GoalBloc>().add(SelectGoal(loadedGoals[0]));
+
+        // 传统模式：正确设置currentGoal和goals
+        setState(() {
+          // 重要修复：如果是根页面，从allGoals中提取根目标
+          if (widget.parentGoal == null) {
+            goals = allGoals.where((goal) => goal.parentId == null).toList();
+          } else {
+            goals = reloadedGoals;
           }
-        } else {
-          setState(() {
+          currentGoal = goals.isNotEmpty ? goals[0] : null;
+          _isLoading = false;
+        });
+
+        // 第二阶段迁移完成：统一使用BLoC事件加载目标数据（影子模式）
+        context.read<GoalBloc>().add(LoadGoals());
+        if (reloadedGoals.isNotEmpty) {
+          context.read<GoalBloc>().add(SelectGoal(reloadedGoals[0]));
+        }
+      } else {
+        // 传统模式：正确设置currentGoal和goals
+        setState(() {
+          // 重要修复：如果是根页面，从allGoals中提取根目标
+          if (widget.parentGoal == null) {
+            goals = allGoals.where((goal) => goal.parentId == null).toList();
+          } else {
             goals = loadedGoals;
-            if (goals.isNotEmpty && currentGoal == null) {
-              currentGoal = goals[0];
-            }
-            _isLoading = false;
-          });
+          }
+          currentGoal = goals.isNotEmpty ? goals[0] : null;
+          _isLoading = false;
+        });
+
+        // 第二阶段迁移完成：统一使用BLoC事件加载目标数据（影子模式）
+        context.read<GoalBloc>().add(LoadGoals());
+        if (loadedGoals.isNotEmpty) {
+          context.read<GoalBloc>().add(SelectGoal(loadedGoals[0]));
         }
       }
 
@@ -381,6 +616,13 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           print('BLoC加载失败 - 影子模式: $error');
         },
       );
+
+      // 重要修复：确保在正常流程结束时loading状态为false
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       setState(() {
         _error = '加载数据失败: $e';
@@ -389,17 +631,34 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
     }
   }
 
-  // 保存初始目标数据
+  // 保存初始目标数据（带幂等保护）
   Future<void> _saveInitialGoals() async {
     print('开始保存初始数据到数据库');
 
     try {
-      // 使用批量插入事务提高性能
-      await _dbHelper.batchInsertGoalTree(goals);
+      // 1) 幂等检查：数据库如已有数据则跳过种子写入
+      final existingAll = await _dbHelper.getGoalTree();
+      if (existingAll.isNotEmpty) {
+        print('跳过初始数据保存：数据库已有 ${existingAll.length} 条记录');
+        return;
+      }
 
+      // 2) 防御处理：确保待插入的种子数据ID为空（避免显式ID导致唯一约束冲突）
+      void _resetIdsRecursively(Goal g) {
+        g.id = null;
+        for (final child in g.subGoals) {
+          _resetIdsRecursively(child);
+        }
+      }
+      for (final g in goals) {
+        _resetIdsRecursively(g);
+      }
+
+      // 3) 使用批量插入事务
+      await _dbHelper.batchInsertGoalTree(goals);
       print('初始数据保存完成');
 
-      // 使用BLoC适配器保存初始数据（影子模式）
+      // 4) 仅在实际写入后，通知影子模式适配器
       _blocAdapter?.saveInitialGoals(
         goals: goals,
         onSuccess: () {
@@ -410,43 +669,13 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
         },
       );
     } catch (e) {
-      print('保存初始数据出错: $e');
-
-      // 如果批量插入失败，回退到单个保存方式
-      // 使用Future.wait确保所有异步操作完成
-      List<Future> saveFutures = [];
-
-      for (var goal in goals) {
-        // 先保存父目标
-        print('保存父目标: ${goal.title}');
-        final Future<int> idFuture = _dbHelper.insertGoal(goal);
-
-        // 添加处理完成后设置ID的回调
-        final parentFuture = idFuture.then((id) {
-          goal.id = id; // 保存数据库生成的ID
-          print('父目标ID: ${goal.id}');
-
-          // 保存子目标并设置父子关系
-          List<Future> subFutures = [];
-          if (goal.subGoals.isNotEmpty) {
-            print('保存子目标，数量: ${goal.subGoals.length}');
-            for (var subGoal in goal.subGoals) {
-              subGoal.parentId = goal.id; // 设置父目标ID
-              print('设置子目标父ID: ${subGoal.title} -> 父ID: ${subGoal.parentId}');
-              final subFuture = _dbHelper.insertGoal(subGoal).then((subId) {
-                subGoal.id = subId;
-                print('子目标已保存，ID: ${subGoal.id}');
-              });
-              subFutures.add(subFuture);
-            }
-          }
-          return Future.wait(subFutures);
-        });
-
-        saveFutures.add(parentFuture);
+      final msg = e.toString();
+      if (msg.contains('UNIQUE constraint failed: goals.id')) {
+        // 冲突容错：视为已初始化过，跳过
+        print('跳过初始数据保存（检测到重复ID插入）: $e');
+        return;
       }
-
-      await Future.wait(saveFutures);
+      print('保存初始数据出错: $e');
     }
   }
 
@@ -454,6 +683,16 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   Future<void> _refreshGoalTree() async {
     final executeMode = _blocAdapter?.executeMode ?? false;
     print('【GoalPage】开始刷新目标树，当前模式: ${executeMode ? "BLoC模式" : "传统模式"}');
+
+    // 性能优化：检查缓存
+    if (_isCacheValid()) {
+      print('【性能优化】使用缓存数据，跳过数据库查询');
+      setState(() {
+        allGoals = _cachedAllGoals!;
+        _isLoading = false;
+      });
+      return;
+    }
 
     // 检查BLoC适配器执行模式状态
     final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
@@ -470,38 +709,23 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
 
         print('【GoalPage】使用传统方式刷新目标树');
         final startTime = DateTime.now();
-        allGoals = await _dbHelper.getGoalTree();
+        final freshGoals = await _dbHelper.getGoalTree();
         final endTime = DateTime.now();
         print(
-            '【GoalPage】传统方式加载完成，耗时: ${endTime.difference(startTime).inMilliseconds}ms，获取 ${allGoals.length} 个目标');
+            '【GoalPage】传统方式加载完成，耗时: ${endTime.difference(startTime).inMilliseconds}ms，获取 ${freshGoals.length} 个目标');
+
+        // 性能优化：更新缓存
+        _updateCache(freshGoals);
+
+        // 直接更新状态
+        setState(() {
+          allGoals = freshGoals;
+          _isLoading = false;
+        });
 
         if (mounted) {
-          // 第二阶段迁移：使用BLoC事件刷新目标树，移除setState
-          final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-          if (isBlocModeEnabled) {
-            // 使用BLoC事件刷新目标树
-            context.read<GoalBloc>().add(const LoadGoals());
-          } else {
-            setState(() {
-              if (widget.parentGoal == null) {
-                // 根页面goals为顶级目标
-                goals = allGoals;
-              } else {
-                // 查找当前父目标的子目标
-                final parentGoal = allGoals.firstWhere(
-                  (g) => g.id == widget.parentGoal!.id,
-                  orElse: () => widget.parentGoal!,
-                );
-                goals = parentGoal.subGoals;
-              }
-
-              if (goals.isNotEmpty && currentGoal == null) {
-                currentGoal = goals[0];
-              }
-
-              _isLoading = false;
-            });
-          }
+          // 第二阶段迁移完成：统一使用BLoC事件刷新目标树
+          context.read<GoalBloc>().add(const LoadGoals());
         }
 
         // 使用BLoC适配器刷新目标树（影子模式）
@@ -544,6 +768,13 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
 
         // 通知父组件目标树已更改
         widget.onGoalTreeChanged?.call();
+
+        // 重要修复：设置loading状态为false
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
       } catch (e) {
         if (mounted) {
           setState(() {
@@ -577,19 +808,16 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       goal.id = id;
       print('【GoalPage】子目标创建成功: ID=$id, 父ID=${goal.parentId}');
 
-      // 第二阶段迁移：使用BLoC事件新增目标，移除setState
-      final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-      if (isBlocModeEnabled) {
-        // 使用BLoC事件新增目标
+      // 第二阶段迁移完成：统一使用BLoC事件新增目标
+      if (_featureToggles.writeThroughBloc) {
         context
             .read<GoalBloc>()
             .add(AddGoalWithDetails(goal, setAsCurrent: true, insertIndex: 0));
       } else {
-        // 更新UI
-        setState(() {
-          goals.insert(0, goal); // 插入到列表开头
-          currentGoal = goal; // 选中新创建的目标
-        });
+        // 阶段0：避免双写，使用只读同步刷新BLoC状态
+        context.read<GoalBloc>().add(const LoadGoals());
+        context.read<GoalBloc>().add(RefreshGoalTree());
+        context.read<GoalBloc>().add(SelectGoal(goal));
       }
 
       // 重要：刷新目标树，确保子目标显示在树中
@@ -652,24 +880,18 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       // 更新数据库
       await _dbHelper.updateGoal(goal);
 
-      // 第二阶段迁移：使用BLoC事件更新目标，移除setState
-      final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-      if (isBlocModeEnabled) {
-        // 使用BLoC事件更新目标
+      // 阶段0：避免双写，根据开关决定是否通过BLoC写
+      if (_featureToggles.writeThroughBloc) {
         context
             .read<GoalBloc>()
             .add(UpdateGoalWithValidation(goal, validateData: false));
       } else {
-        // 更新UI
-        setState(() {
-          final index = goals.indexWhere((g) => g.id == goal.id);
-          if (index != -1) {
-            goals[index] = goal;
-            if (currentGoal?.id == goal.id) {
-              currentGoal = goal;
-            }
-          }
-        });
+        context.read<GoalBloc>().add(const LoadGoals());
+        context.read<GoalBloc>().add(RefreshGoalTree());
+        // 如当前选中目标为此目标，确保选择保持
+        if (currentGoal?.id == goal.id) {
+          context.read<GoalBloc>().add(SelectGoal(goal));
+        }
       }
 
       // 如果是子目标,通知父页面刷新
@@ -701,21 +923,19 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       // 从数据库中删除
       await _dbHelper.deleteGoal(goal.id!);
 
-      // 第二阶段迁移：使用BLoC事件删除目标，移除setState
-      final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-      if (isBlocModeEnabled) {
-        // 使用BLoC事件删除目标
+      // 第二阶段迁移完成：统一使用BLoC事件删除目标
+      if (_featureToggles.writeThroughBloc) {
         context
             .read<GoalBloc>()
             .add(DeleteGoalWithCleanup(goal, updateCurrent: true));
       } else {
-        // 更新UI
-        setState(() {
-          goals.remove(goal);
-          if (currentGoal?.id == goal.id) {
-            currentGoal = goals.isNotEmpty ? goals[0] : null;
-          }
-        });
+        // 阶段0：避免双写，先删DB，再同步BLoC
+        context.read<GoalBloc>().add(const LoadGoals());
+        context.read<GoalBloc>().add(RefreshGoalTree());
+        // 重新选择当前目标
+        if (goals.isNotEmpty) {
+          context.read<GoalBloc>().add(SelectGoal(goals.first));
+        }
       }
 
       // 如果是子目标,通知父页面刷新
@@ -772,34 +992,12 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
 
   @override
   Widget build(BuildContext context) {
-    // 检查是否启用了任何BLoC功能
-    final bool isBlocEnabled = _blocAdapter?.executeMode ?? false;
-
-    // 新的BlocBuilder实现 - 第一阶段迁移
-    if (isBlocEnabled) {
-      return _buildWithBlocBuilder(context);
-    }
-
-    // 原有实现保持不变作为备份
+    // 简化架构：统一使用混合模式（传统状态 + BLoC监听）
+    // 移除复杂的开关判断，确保UI始终响应
     return _buildWithBlocListener(context);
   }
 
-  /// 新的BlocBuilder驱动的build方法 - 第一阶段实现
-  Widget _buildWithBlocBuilder(BuildContext context) {
-    return BlocBuilder<GoalBloc, GoalState>(
-      builder: (context, state) {
-        if (state is GoalLoading) {
-          return _buildLoadingView();
-        } else if (state is GoalError) {
-          return _buildErrorView(state.message);
-        } else if (state is GoalsLoaded) {
-          return _buildMainContent(state);
-        }
-
-        return _buildInitialView();
-      },
-    );
-  }
+  // 已移除：未使用的BlocBuilder方法已清理
 
   /// 构建加载视图
   Widget _buildLoadingView() {
@@ -846,16 +1044,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
     );
   }
 
-  /// 构建主要内容 - 基于BLoC状态
-  Widget _buildMainContent(GoalsLoaded state) {
-    return Scaffold(
-      appBar: _buildAppBarWithState(state),
-      body: _buildCurrentViewWithState(state),
-      // 移除悬浮按钮，因为FullScreenView内部已有新增按钮
-      // floatingActionButton: _buildFloatingActionButton(),
-      drawer: _buildDrawer(),
-    );
-  }
+  // 已移除：未使用的BLoC状态构建方法已清理
 
   /// 构建AppBar - 基于BLoC状态
   PreferredSizeWidget _buildAppBarWithState(GoalsLoaded state) {
@@ -867,15 +1056,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
         color: state.viewMode == 0 ? Colors.white : Colors.black,
       ),
       actions: [
-        IconButton(
-          icon: const Icon(Icons.search),
-          onPressed: () {
-            showSearch(
-              context: context,
-              delegate: GoalSearchDelegate(goals),
-            );
-          },
-        ),
+        // 已移除：搜索按钮
         IconButton(
           icon: Image.asset(
             state.viewMode == 0
@@ -915,12 +1096,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           _showShareDialog(state.currentGoal!);
         }
       },
-      onToggleCountdown: () {
-        context
-            .read<GoalBloc>()
-            .add(ToggleCountdownDisplay(!state.showCountdown));
-      },
-      showCountdown: state.showCountdown,
+      // 倒计时功能已移除
       onToggleTime: () {
         context.read<GoalBloc>().add(ToggleTimeDisplay(!state.showTime));
       },
@@ -949,12 +1125,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           _addSubGoalFromFullScreenWithState(state);
         }
       },
-      onToggleCustomCountdown: () {
-        if (state.currentGoal != null) {
-          _showCustomCountdownDialog();
-        }
-      },
-      hasCustomCountdown: state.currentGoal?.hasCustomCountdown ?? false,
+      // 倒计时功能已移除
       onViewSubGoals: () {
         _viewSubGoalsWithState(state);
       },
@@ -1000,7 +1171,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       currentGoal: state.currentGoal!,
       goals: state.goals,
       onGoalSelect: (goal) {
-        context.read<GoalBloc>().add(SelectGoal(goal));
+        _selectGoal(goal);
       },
       showTime: state.showTime,
       showDescription: state.showDescription,
@@ -1015,30 +1186,92 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
         context.read<GoalBloc>().add(SaveTitle(title));
       },
       onDescriptionEdit: () {
-        context
-            .read<GoalBloc>()
-            .add(ToggleDescriptionDisplay(!state.showDescription));
+        _startDescriptionEdit();
+      },
+      // 批次2重构：添加描述编辑参数，与标题编辑保持一致
+      isEditingDescription: state.isEditingDescription,
+      descriptionController: _descriptionController,
+      onDescriptionSave: () {
+        final description = _descriptionController.text;
+        context.read<GoalBloc>().add(SaveDescription(description));
       },
       onImagePick: _pickImage,
-      onToggleTitle: () {
-        context.read<GoalBloc>().add(ToggleTitleDisplay(!state.showTitle));
-      },
+      onToggleTitle: _toggleShowTitle,
       onAddGoal: _addNewGoalWrapper,
       onAddSubGoal: () => _addSubGoalFromFullScreenWithState(state),
-      hasCustomCountdown: state.currentGoal?.hasCustomCountdown ?? false,
+      // 倒计时功能已移除
     );
   }
 
   /// 构建时间轴视图 - 基于BLoC状态
   Widget _buildTimelineViewWithState(GoalsLoaded state) {
-    // 暂时使用原有的时间轴视图构建方法，后续优化
-    return _buildTimelineView();
+    // 基于 BLoC 的当前目标和列表渲染高亮，仅限只读渲染，小步替换
+    final items = widget.parentGoal == null
+        ? state.allGoals.where((g) => g.parentId == null).toList()
+        : state.allGoals.where((g) => g.parentId == widget.parentGoal!.id).toList();
+
+    return TimelineView(
+      goals: items,
+      isSubgoal: widget.parentGoal != null,
+      currentGoalId: state.currentGoal?.id,
+      onGoalSelect: (goal) {
+        // 批次2：使用统一的目标选择方法
+        _selectGoal(goal);
+        // 切换到全屏视图
+        if (_featureToggles.viewModeWriteThrough) {
+          context.read<GoalBloc>().add(const ToggleViewMode(0));
+        } else {
+          setState(() {
+            currentView = 0;
+          });
+          context.read<GoalBloc>().add(const ToggleViewMode(0));
+        }
+      },
+      onAddGoal: _showAddGoalDialog,
+      onSaveNewGoal: (title, description, imagePath, selectedDate) {
+        final newGoal = Goal(
+          title: title,
+          description: description,
+          imagePath: imagePath ?? 'assets/images/default/default.jpg',
+          createdTime: DateTime.now(),
+          targetDate: selectedDate,
+          parentId: widget.parentGoal?.id,
+        );
+        _addNewGoal(newGoal);
+      },
+      onUpdateGoalDate: (goal, newDate) async {
+        try {
+          final updatedGoal = goal.copyWith(targetDate: newDate);
+          await _updateGoal(updatedGoal);
+          return true;
+        } catch (e) {
+          print('更新目标日期失败: $e');
+          return false;
+        }
+      },
+    );
   }
 
   /// 构建网格视图 - 基于BLoC状态
   Widget _buildGridViewWithState(GoalsLoaded state) {
-    // 暂时使用原有的网格视图构建方法，后续优化
-    return _buildGridView();
+    // 只读渲染：使用 BLoC 的 allGoals 按父子关系过滤
+    final items = widget.parentGoal == null
+        ? state.allGoals.where((g) => g.parentId == null).toList()
+        : state.allGoals.where((g) => g.parentId == widget.parentGoal!.id).toList();
+
+    return GoalGridView(
+      goals: items,
+      currentGoalId: state.currentGoal?.id,
+      onGoalSelect: (goal) {
+        // 批次2：使用统一的目标选择方法
+        _selectGoal(goal);
+        context.read<GoalBloc>().add(const ToggleViewMode(0));
+      },
+      onAddGoal: _showAddGoalDialog,
+      onShowOperationMenu: (context, goal) {
+        _showDeleteGoalDialog(goal);
+      },
+    );
   }
 
   /// 构建目标树视图 - 基于BLoC状态
@@ -1062,125 +1295,83 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
     // 检查是否启用了任何BLoC功能
     final bool isBlocEnabled = _blocAdapter?.executeMode ?? false;
 
-    // 如果启用了BLoC功能，使用BlocListener进行状态监听
+    // 重要修复：即使在影子模式下，也需要监听BLoC事件来保持状态同步
     // BlocListener只监听状态，不参与UI构建，因此可以安全地在其回调中调用setState
-    return isBlocEnabled
-        ? BlocListener<GoalBloc, GoalState>(
-            listenWhen: (previous, current) {
-              // 只在状态真正变化时触发监听
-              if (previous is GoalsLoaded && current is GoalsLoaded) {
-                // 检查目标树数据变化
-                if (previous.allGoals.length != current.allGoals.length) {
-                  print(
-                      '【GoalPage】BlocListener监测到目标树变化: ${previous.allGoals.length} -> ${current.allGoals.length}');
-                  return true;
-                }
+    return MultiBlocListener(
+      listeners: [
+        BlocListener<GoalBloc, GoalState>(
+          // 放宽过滤：任何 GoalState 变化都尝试同步，由内部批处理与节流控制频率
+          listenWhen: (previous, current) {
+            print('【调试】BlocListener.listenWhen: ${previous.runtimeType} -> ${current.runtimeType}');
+            return true;
+          },
+          listener: (context, state) {
+            print('【调试】BlocListener.listener被调用: ${state.runtimeType}');
+            if (state is GoalsLoaded) {
+              syncStateFromBloc(state);
+            }
+          },
+        ),
+        BlocListener<ComponentCommunicationBloc, ComponentCommunicationState>(
+          listener: (context, state) {
+            _handleComponentCommunication(state);
+          },
+        ),
+        // 添加ComponentCommunicationBloc监听器
 
-                // 检查所有可能需要UI更新的状态变化
-                final prevGoal = previous.currentGoal;
-                final currGoal = current.currentGoal;
+      ],
+      // 保持原有UI构建不变
+      child: _buildScaffold(),
+    );
+  }
 
-                // 如果当前目标发生变化，需要更新
-                if (prevGoal?.id != currGoal?.id) {
-                  print(
-                      '【GoalPage】BlocListener监测到目标ID变化: ${prevGoal?.id} -> ${currGoal?.id}');
-                  return true;
-                }
-
-                // 如果当前目标的属性发生变化，需要更新
-                if (prevGoal != null &&
-                    currGoal != null &&
-                    prevGoal.id == currGoal.id) {
-                  final titleChanged = prevGoal.title != currGoal.title;
-                  final descChanged =
-                      prevGoal.description != currGoal.description;
-                  final statusChanged = prevGoal.status != currGoal.status;
-                  final dateChanged =
-                      prevGoal.targetDate != currGoal.targetDate;
-                  final countdownChanged = prevGoal.hasCustomCountdown !=
-                          currGoal.hasCustomCountdown ||
-                      prevGoal.customCountdownDays !=
-                          currGoal.customCountdownDays;
-                  final mediaChanged =
-                      prevGoal.imagePath != currGoal.imagePath ||
-                          prevGoal.videoPath != currGoal.videoPath ||
-                          prevGoal.hasVideo != currGoal.hasVideo;
-
-                  if (titleChanged ||
-                      descChanged ||
-                      statusChanged ||
-                      dateChanged ||
-                      countdownChanged ||
-                      mediaChanged) {
-                    print('【GoalPage】BlocListener监测到目标属性变化: ' +
-                        (titleChanged ? '标题 ' : '') +
-                        (descChanged ? '描述 ' : '') +
-                        (statusChanged ? '状态 ' : '') +
-                        (dateChanged ? '日期 ' : '') +
-                        (countdownChanged ? '倒计时 ' : '') +
-                        (mediaChanged ? '媒体 ' : ''));
-                    return true;
-                  }
-                }
-
-                // 如果UI状态发生变化，需要更新
-                final editTitleChanged =
-                    previous.isEditingTitle != current.isEditingTitle;
-                final editDescChanged = previous.isEditingDescription !=
-                    current.isEditingDescription;
-                final viewModeChanged = previous.viewMode != current.viewMode;
-                final showCountdownChanged =
-                    previous.showCountdown != current.showCountdown;
-                final showTimeChanged = previous.showTime != current.showTime;
-                final showDescChanged =
-                    previous.showDescription != current.showDescription;
-                final showTitleChanged =
-                    previous.showTitle != current.showTitle;
-
-                if (editTitleChanged ||
-                    editDescChanged ||
-                    viewModeChanged ||
-                    showCountdownChanged ||
-                    showTimeChanged ||
-                    showDescChanged ||
-                    showTitleChanged) {
-                  print('【GoalPage】BlocListener监测到UI状态变化: ' +
-                      (editTitleChanged ? '标题编辑 ' : '') +
-                      (editDescChanged ? '描述编辑 ' : '') +
-                      (viewModeChanged ? '视图模式 ' : '') +
-                      (showCountdownChanged ? '显示倒计时 ' : '') +
-                      (showTimeChanged ? '显示时间 ' : '') +
-                      (showDescChanged ? '显示描述 ' : '') +
-                      (showTitleChanged ? '显示标题 ' : ''));
-                  return true;
-                }
-
-                return false;
-              }
-              return true; // 其他状态类型变化时都触发
-            },
-            listener: (context, state) {
-              if (state is GoalsLoaded) {
-                _log('收到BLoC状态更新: ${state.runtimeType}');
-
-                // 在listener回调中同步状态
-                syncStateFromBloc(state);
-              }
-
-              if (state is GoalError) {
-                _log('BLoC错误: ${state.message}', true);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('操作失败: ${state.message}'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              }
-            },
-            // 保持原有UI构建不变
-            child: _buildScaffold(),
-          )
-        : _buildScaffold();
+  // 处理组件通信事件
+  void _handleComponentCommunication(ComponentCommunicationState state) {
+    if (state is NavigationRequested) {
+      // 处理导航请求
+      switch (state.routeName) {
+        case '/settings':
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const SettingsPage()),
+          );
+          break;
+        case '/login':
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const LoginPage()),
+          );
+          break;
+        case '/membership':
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const MembershipPage()),
+          );
+          break;
+        default:
+          print('未处理的导航请求: ${state.routeName}');
+      }
+    } else if (state is DialogRequested) {
+      // 处理对话框请求
+      switch (state.type) {
+        // 已移除：搜索功能
+        default:
+          print('未处理的对话框请求: ${state.type}');
+      }
+    } else if (state is MessageRequested) {
+      // 处理消息显示请求
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(state.message),
+          backgroundColor: state.type == 'error'
+              ? Colors.red
+              : state.type == 'success'
+                  ? Colors.green
+                  : Colors.blue,
+          duration: state.duration ?? const Duration(seconds: 3),
+        ),
+      );
+    }
   }
 
   // 从BLoC状态同步到本地状态的方法
@@ -1199,23 +1390,29 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       final syncStartTime = DateTime.now();
 
       // 第二阶段迁移：BLoC状态同步已经自动处理数据更新，移除手动setState
-      // 同步目标树数据 (allGoals)
+      // 性能优化：同步目标树数据使用批处理
       if (state.allGoals.isNotEmpty) {
         print('【GoalPage】同步目标树数据: ${state.allGoals.length} 个目标');
-        // BLoC状态已经包含最新数据，UI会自动更新，无需手动setState
-        allGoals = state.allGoals;
 
-        // 如果是根页面，同时更新goals列表
+        // 更新缓存
+        _updateCache(state.allGoals);
+
+        // 批处理更新状态
+        _batchStateUpdate('allGoals', state.allGoals);
+
+        // 计算goals列表
+        List<Goal> newGoals;
         if (widget.parentGoal == null) {
-          goals = allGoals;
+          newGoals =
+              state.allGoals.where((goal) => goal.parentId == null).toList();
         } else {
-          // 如果是子目标页面，更新子目标列表
-          final parentGoal = allGoals.firstWhere(
+          final parentGoal = state.allGoals.firstWhere(
             (g) => g.id == widget.parentGoal!.id,
             orElse: () => widget.parentGoal!,
           );
-          goals = parentGoal.subGoals;
+          newGoals = parentGoal.subGoals;
         }
+        _batchStateUpdate('goals', newGoals);
       } else {
         print('【GoalPage】警告: BLoC返回的目标树为空，保留本地数据');
       }
@@ -1240,21 +1437,34 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
         _titleController.text = state.currentGoal!.title;
       }
 
-      // 当前目标 - 只在明确需要切换目标时才更新
+      // 批次2：当前目标同步（支持灰度模式）
       if (state.currentGoal != null &&
           (currentGoal == null || currentGoal!.id != state.currentGoal!.id)) {
         print(
             '【GoalPage】同步当前目标: ${currentGoal?.id} -> ${state.currentGoal!.id}');
-        // 第二阶段迁移：BLoC状态同步已经自动处理数据更新，移除手动setState
-        currentGoal = state.currentGoal;
+
+        if (_featureToggles.currentGoalSelectionWriteThrough) {
+          // 批次2灰度：只读同步，不通过setState改变
+          currentGoal = state.currentGoal;
+          // 同时更新goals列表中的对应项
+          if (state.goals.isNotEmpty) {
+            goals = state.goals;
+          }
+          print('【批次2灰度】currentGoal只读同步: ${currentGoal?.id}');
+        } else {
+          // 传统模式：使用setState更新currentGoal以触发UI重建
+          setState(() {
+            currentGoal = state.currentGoal;
+            // 同时更新goals列表中的对应项
+            if (state.goals.isNotEmpty) {
+              goals = state.goals;
+            }
+          });
+        }
+
         // 确保标题编辑器内容与当前目标匹配
         if (_isEditingTitle) {
           _titleController.text = state.currentGoal!.title;
-        }
-
-        // 同时更新goals列表中的对应项
-        if (state.goals.isNotEmpty) {
-          goals = state.goals;
         }
       } else if (state.currentGoal != null &&
           currentGoal != null &&
@@ -1271,8 +1481,8 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           needsUpdate = true;
         }
 
-        // 检查描述更新
-        if (_featureToggles.descriptionEditing &&
+        // 检查描述更新（批次2：支持新的描述编辑开关）
+        if ((_featureToggles.descriptionEditing || _featureToggles.descriptionEditingWriteThrough) &&
             currentGoal!.description != state.currentGoal!.description) {
           print(
               '【GoalPage】同步目标描述: ${currentGoal!.description} -> ${state.currentGoal!.description}');
@@ -1340,11 +1550,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
 
       // 其他状态同步...
       // 例如视图模式、UI显示选项等
-      if (state.showCountdown != _showCountdown) {
-        setState(() {
-          _showCountdown = state.showCountdown;
-        });
-      }
+      // 倒计时功能已移除
 
       if (state.showTime != _showTime) {
         setState(() {
@@ -1359,16 +1565,92 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       }
 
       if (state.showTitle != _showTitle) {
-        setState(() {
+        if (_featureToggles.titleDisplayWriteThrough) {
+          // 批次1灰度：只读同步，不通过setState改变
           _showTitle = state.showTitle;
-        });
+          print('【批次1灰度】showTitle只读同步: $_showTitle');
+        } else {
+          // 传统模式：通过setState同步
+          setState(() {
+            _showTitle = state.showTitle;
+          });
+        }
+      }
+
+      if (state.showDescription != _showDescription) {
+        if (_featureToggles.descriptionDisplayWriteThrough) {
+          // 批次1灰度：只读同步，不通过setState改变
+          _showDescription = state.showDescription;
+          print('【批次1灰度】showDescription只读同步: $_showDescription');
+        } else {
+          // 传统模式：通过setState同步
+          setState(() {
+            _showDescription = state.showDescription;
+          });
+        }
+      }
+
+      if (state.showTime != _showTime) {
+        if (_featureToggles.timeDisplayWriteThrough) {
+          // 批次1灰度：只读同步，不通过setState改变
+          _showTime = state.showTime;
+          print('【批次1灰度】showTime只读同步: $_showTime');
+        } else {
+          // 传统模式：通过setState同步
+          setState(() {
+            _showTime = state.showTime;
+          });
+        }
       }
 
       // 同步视图模式
       if (state.viewMode != currentView) {
-        setState(() {
+        if (_featureToggles.viewModeWriteThrough) {
+          // 批次1灰度：只读同步，不通过setState改变
           currentView = state.viewMode;
-        });
+          print('【批次1灰度】viewMode只读同步: $currentView');
+        } else {
+          // 传统模式：通过setState同步
+          setState(() {
+            currentView = state.viewMode;
+          });
+        }
+      }
+
+      // 批次2：编辑状态同步
+      if (state.isEditingTitle != _isEditingTitle) {
+        if (_featureToggles.titleEditingWriteThrough) {
+          // 批次2灰度：只读同步编辑状态
+          _isEditingTitle = state.isEditingTitle;
+          print('【批次2灰度】titleEditing只读同步: $_isEditingTitle');
+
+          // 同步编辑内容到TextEditingController
+          if (state.isEditingTitle &&
+              state.currentGoal != null &&
+              _titleController.text != state.currentGoal!.title) {
+            _titleController.text = state.currentGoal!.title;
+            print('【批次2灰度】同步标题到编辑器: ${state.currentGoal!.title}');
+          }
+        } else {
+          // 传统模式：通过setState同步
+          setState(() {
+            _isEditingTitle = state.isEditingTitle;
+          });
+        }
+      }
+
+      // 批次2：描述编辑状态同步
+      if (state.isEditingDescription != _isEditingDescription) {
+        if (_featureToggles.descriptionEditingWriteThrough) {
+          // 批次2灰度：只读同步编辑状态
+          _isEditingDescription = state.isEditingDescription;
+          print('【批次2灰度】descriptionEditing只读同步: $_isEditingDescription');
+        } else {
+          // 传统模式：通过setState同步
+          setState(() {
+            _isEditingDescription = state.isEditingDescription;
+          });
+        }
       }
 
       // 添加数据一致性验证
@@ -1390,128 +1672,44 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   // 构建传统UI的方法（与原有方法保持一致）
   Widget _buildScaffold() {
     return Scaffold(
-      extendBodyBehindAppBar: currentView == 0,
-      appBar: AppBar(
-        backgroundColor: currentView == 0 ? Colors.transparent : Colors.white,
-        elevation: currentView == 0 ? 0 : 1,
-        centerTitle: true,
-        leading: Builder(
-          builder: (BuildContext context) => IconButton(
-            icon: Image.asset(
-              'assets/icons/Menu-white.png',
-              width: 24,
-              height: 24,
-              color: currentView == 0 ? Colors.white : Colors.black,
-            ),
-            onPressed: () {
-              Scaffold.of(context).openDrawer();
-            },
-          ),
-        ),
-        title: widget.parentGoal != null
-            ? GestureDetector(
-                onTap: () => Navigator.pop(context),
-                child: Text(
-                  widget.parentGoal!.title.length > 9
-                      ? widget.parentGoal!.title.substring(0, 9) + '…'
-                      : widget.parentGoal!.title,
-                  style: TextStyle(
-                    fontSize: 18,
-                    color: currentView == 0 ? Colors.white : Colors.black,
-                    fontWeight: FontWeight.w600,
-                    fontFamily: 'STZhongsong',
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              )
-            : null,
-        iconTheme: IconThemeData(
-          color: currentView == 0 ? Colors.white : Colors.black,
-        ),
-        actions: [
-          IconButton(
-            icon: Image.asset(
-              currentView == 0
-                  ? 'assets/icons/View-switch-white.png'
-                  : currentView == 1
-                      ? 'assets/icons/View-switch-white.png'
-                      : 'assets/icons/View-switch-white.png',
-              width: 24,
-              height: 24,
-              color: currentView == 0 ? Colors.white : Colors.black,
-            ),
-            onPressed: _onChangeView,
-          ),
-          if (currentView == 0 && currentGoal != null)
-            GoalOperationMenu(
-              currentGoal: currentGoal,
-              onStatusChange: () {
-                if (currentGoal != null) {
-                  _showStatusDialog(currentGoal!);
-                }
-              },
-              onDelete: _deleteCurrentGoal,
-              onShare: () {
-                if (currentGoal != null) {
-                  _showShareDialog(currentGoal!);
-                }
-              },
-              onToggleCountdown: _toggleCountdown,
-              showCountdown: _showCountdown,
-              onToggleTime: _toggleShowTime,
-              showTime: _showTime,
-              onToggleDescription: _toggleShowDescription,
-              showDescription: _showDescription,
-              onToggleTitle: () {
-                // 第二阶段迁移：使用BLoC事件切换标题显示，移除setState
-                final bool isBlocModeEnabled =
-                    _blocAdapter?.executeMode ?? false;
-                if (isBlocModeEnabled) {
-                  context.read<GoalBloc>().add(ToggleTitleDisplay(!_showTitle));
-                } else {
-                  setState(() {
-                    _showTitle = !_showTitle;
-                  });
-                }
-              },
-              showTitle: _showTitle,
-              onToggleDeadline: () {
-                if (currentGoal != null) {
-                  _toggleDeadline(currentGoal!);
-                }
-              },
-              onAddSubGoal: () {
-                _addSubGoalFromFullScreen();
-              },
-              onToggleCustomCountdown: () {
-                if (currentGoal != null) {
-                  _showCustomCountdownDialog();
-                }
-              },
-              hasCustomCountdown: currentGoal?.hasCustomCountdown ?? false,
-              // 添加查看子目标的回调
-              onViewSubGoals: _viewSubGoals,
-            ),
-        ],
-      ),
+      extendBodyBehindAppBar: _featureToggles.viewModeWriteThrough
+          ? (context.read<GoalBloc>().state is GoalsLoaded
+              ? (context.read<GoalBloc>().state as GoalsLoaded).viewMode == 0
+              : true)
+          : currentView == 0,
+      appBar: _buildAppBarTraditional(),
       drawer: _buildDrawer(),
       body: Stack(
         children: [
-          if (currentView == 0)
+          if (_featureToggles.viewModeWriteThrough
+              ? (context.read<GoalBloc>().state is GoalsLoaded
+                  ? (context.read<GoalBloc>().state as GoalsLoaded).viewMode == 0
+                  : true)
+              : currentView == 0)
             // 全屏视图的背景
             Container(
               decoration: BoxDecoration(
                 image: DecorationImage(
-                  image: currentGoal?.imagePath != null &&
+                  image: _featureToggles.currentGoalSelectionWriteThrough
+                      ? (context.read<GoalBloc>().state is GoalsLoaded
+                          ? ((context.read<GoalBloc>().state as GoalsLoaded).currentGoal?.imagePath != null &&
+                              (context.read<GoalBloc>().state as GoalsLoaded).currentGoal!.imagePath.isNotEmpty
+                              ? _getImageProvider((context.read<GoalBloc>().state as GoalsLoaded).currentGoal!.imagePath)
+                              : AssetImage('assets/images/default/default.jpg'))
+                          : AssetImage('assets/images/default/default.jpg'))
+                      : (currentGoal?.imagePath != null &&
                           currentGoal!.imagePath.isNotEmpty
                       ? _getImageProvider(currentGoal!.imagePath)
-                      : AssetImage('assets/images/default/default.jpg'),
+                      : AssetImage('assets/images/default/default.jpg')),
                   fit: BoxFit.cover,
                 ),
               ),
             ),
-          if (currentView != 0)
+          if (_featureToggles.viewModeWriteThrough
+              ? (context.read<GoalBloc>().state is GoalsLoaded
+                  ? (context.read<GoalBloc>().state as GoalsLoaded).viewMode != 0
+                  : false)
+              : currentView != 0)
             Container(
               color: Colors.white,
             ),
@@ -1525,20 +1723,40 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
             )
           else
             IndexedStack(
-              index: currentView,
+              index: _featureToggles.viewModeWriteThrough
+                  ? (context.read<GoalBloc>().state is GoalsLoaded
+                      ? (context.read<GoalBloc>().state as GoalsLoaded).viewMode
+                      : 0)
+                  : currentView,
               children: [
                 Stack(
                   children: [
                     Positioned.fill(
                       child: Container(
-                        color: Colors.black.withOpacity(0.2),
+                        color: Colors.black.withValues(alpha: 0.2),
                       ),
                     ),
                     _buildFullScreenView(),
                   ],
                 ),
-                _buildTimelineView(),
-                _buildGridView(),
+                // 使用BLoC状态渲染时间轴（只读）
+                BlocBuilder<GoalBloc, GoalState>(
+                  builder: (context, state) {
+                    if (state is GoalsLoaded) {
+                      return _buildTimelineViewWithState(state);
+                    }
+                    return _buildTimelineView();
+                  },
+                ),
+                // 使用BLoC状态渲染网格（只读 + 高亮 + 可点击回到全屏）
+                BlocBuilder<GoalBloc, GoalState>(
+                  builder: (context, state) {
+                    if (state is GoalsLoaded) {
+                      return _buildGridViewWithState(state);
+                    }
+                    return _buildGridView();
+                  },
+                ),
               ],
             ),
         ],
@@ -1546,6 +1764,255 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       floatingActionButton: _buildFloatingActionButton(),
     );
   }
+
+  /// 构建传统AppBar
+  AppBar _buildAppBarTraditional() {
+    return AppBar(
+      backgroundColor: _featureToggles.viewModeWriteThrough
+          ? (context.read<GoalBloc>().state is GoalsLoaded
+              ? ((context.read<GoalBloc>().state as GoalsLoaded).viewMode == 0 ? Colors.transparent : Colors.white)
+              : Colors.transparent)
+          : (currentView == 0 ? Colors.transparent : Colors.white),
+      elevation: _featureToggles.viewModeWriteThrough
+          ? (context.read<GoalBloc>().state is GoalsLoaded
+              ? ((context.read<GoalBloc>().state as GoalsLoaded).viewMode == 0 ? 0 : 1)
+              : 0)
+          : (currentView == 0 ? 0 : 1),
+      centerTitle: true,
+      leading: Builder(
+        builder: (BuildContext context) => IconButton(
+          icon: Image.asset(
+            'assets/icons/Menu-white.png',
+            width: 24,
+            height: 24,
+            color: _featureToggles.viewModeWriteThrough
+                ? (context.read<GoalBloc>().state is GoalsLoaded
+                    ? ((context.read<GoalBloc>().state as GoalsLoaded).viewMode == 0 ? Colors.white : Colors.black)
+                    : Colors.white)
+                : (currentView == 0 ? Colors.white : Colors.black),
+          ),
+          onPressed: () {
+            Scaffold.of(context).openDrawer();
+          },
+        ),
+      ),
+      title: widget.parentGoal != null
+          ? GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Text(
+                widget.parentGoal!.title.length > 9
+                    ? widget.parentGoal!.title.substring(0, 9) + '…'
+                    : widget.parentGoal!.title,
+                style: TextStyle(
+                  fontSize: 18,
+                  color: _featureToggles.viewModeWriteThrough
+                      ? (context.read<GoalBloc>().state is GoalsLoaded
+                          ? ((context.read<GoalBloc>().state as GoalsLoaded).viewMode == 0 ? Colors.white : Colors.black)
+                          : Colors.white)
+                      : (currentView == 0 ? Colors.white : Colors.black),
+                  fontWeight: FontWeight.w600,
+                  fontFamily: 'STZhongsong',
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            )
+          : null,
+      iconTheme: IconThemeData(
+        color: _featureToggles.viewModeWriteThrough
+            ? (context.read<GoalBloc>().state is GoalsLoaded
+                ? ((context.read<GoalBloc>().state as GoalsLoaded).viewMode == 0 ? Colors.white : Colors.black)
+                : Colors.white)
+            : (currentView == 0 ? Colors.white : Colors.black),
+      ),
+      actions: [
+        IconButton(
+          icon: Image.asset(
+            _featureToggles.viewModeWriteThrough
+                ? (context.read<GoalBloc>().state is GoalsLoaded
+                    ? ((context.read<GoalBloc>().state as GoalsLoaded).viewMode == 0
+                        ? 'assets/icons/View-switch-white.png'
+                        : (context.read<GoalBloc>().state as GoalsLoaded).viewMode == 1
+                            ? 'assets/icons/View-switch-white.png'
+                            : 'assets/icons/View-switch-white.png')
+                    : 'assets/icons/View-switch-white.png')
+                : (currentView == 0
+                    ? 'assets/icons/View-switch-white.png'
+                    : currentView == 1
+                        ? 'assets/icons/View-switch-white.png'
+                        : 'assets/icons/View-switch-white.png'),
+            width: 24,
+            height: 24,
+            color: _featureToggles.viewModeWriteThrough
+                ? (context.read<GoalBloc>().state is GoalsLoaded
+                    ? ((context.read<GoalBloc>().state as GoalsLoaded).viewMode == 0 ? Colors.white : Colors.black)
+                    : Colors.white)
+                : (currentView == 0 ? Colors.white : Colors.black),
+          ),
+          onPressed: _onChangeView,
+        ),
+        // 调试：重置数据库按钮
+        IconButton(
+          icon: const Icon(Icons.refresh),
+          onPressed: () async {
+            await _resetDatabaseForTesting();
+          },
+          tooltip: '重置数据库',
+        ),
+        if ((_featureToggles.viewModeWriteThrough
+                ? (context.read<GoalBloc>().state is GoalsLoaded
+                    ? (context.read<GoalBloc>().state as GoalsLoaded).viewMode == 0
+                    : true)
+                : currentView == 0) &&
+            (_featureToggles.currentGoalSelectionWriteThrough
+                ? (context.read<GoalBloc>().state is GoalsLoaded
+                    ? (context.read<GoalBloc>().state as GoalsLoaded).currentGoal != null
+                    : false)
+                : currentGoal != null))
+          (_featureToggles.displayOptionsBlocDriven
+              ? BlocBuilder<GoalBloc, GoalState>(
+                  buildWhen: (prev, curr) {
+                    if (prev is GoalsLoaded && curr is GoalsLoaded) {
+                      return prev.showTitle != curr.showTitle ||
+                          prev.showDescription != curr.showDescription ||
+                          prev.showTime != curr.showTime;
+                    }
+                    return prev.runtimeType != curr.runtimeType;
+                  },
+                  builder: (context, state) {
+                    if (state is GoalsLoaded) {
+                      return GoalOperationMenu(
+                        currentGoal: state.currentGoal,
+                        onStatusChange: () {
+                          if (state.currentGoal != null) {
+                            _showStatusDialog(state.currentGoal!);
+                          }
+                        },
+                        onDelete: _deleteCurrentGoal,
+                        onShare: () {
+                          if (state.currentGoal != null) {
+                            _showShareDialog(state.currentGoal!);
+                          }
+                        },
+                        // 倒计时功能已移除
+                        onToggleTime: () {
+                          context.read<GoalBloc>().add(ToggleTimeDisplay(!state.showTime));
+                        },
+                        showTime: state.showTime,
+                        onToggleDescription: () {
+                          context.read<GoalBloc>().add(ToggleDescriptionDisplay(!state.showDescription));
+                        },
+                        showDescription: state.showDescription,
+                        onToggleTitle: () {
+                          context.read<GoalBloc>().add(ToggleTitleDisplay(!state.showTitle));
+                        },
+                        showTitle: state.showTitle,
+                        onToggleDeadline: () {
+                          if (state.currentGoal != null) {
+                            _toggleDeadline(state.currentGoal!);
+                          }
+                        },
+                        onAddSubGoal: () {
+                          _addSubGoalFromFullScreen();
+                        },
+                        // 倒计时功能已移除
+                        onViewSubGoals: _viewSubGoals,
+                      );
+                    }
+                    // 回退到本地渲染
+                    return GoalOperationMenu(
+                      currentGoal: currentGoal,
+                      onStatusChange: () {
+                        if (currentGoal != null) {
+                          _showStatusDialog(currentGoal!);
+                        }
+                      },
+                      onDelete: _deleteCurrentGoal,
+                      onShare: () {
+                        if (currentGoal != null) {
+                          _showShareDialog(currentGoal!);
+                        }
+                      },
+                      // 倒计时功能已移除
+                      onToggleTime: _toggleShowTime,
+                      showTime: _featureToggles.timeDisplayWriteThrough
+                          ? (context.read<GoalBloc>().state is GoalsLoaded
+                              ? (context.read<GoalBloc>().state as GoalsLoaded).showTime
+                              : true)
+                          : _showTime,
+                      onToggleDescription: _toggleShowDescription,
+                      showDescription: _featureToggles.descriptionDisplayWriteThrough
+                          ? (context.read<GoalBloc>().state is GoalsLoaded
+                              ? (context.read<GoalBloc>().state as GoalsLoaded).showDescription
+                              : true)
+                          : _showDescription,
+                      onToggleTitle: _toggleShowTitle,
+                      showTitle: _featureToggles.titleDisplayWriteThrough
+                          ? (context.read<GoalBloc>().state is GoalsLoaded
+                              ? (context.read<GoalBloc>().state as GoalsLoaded).showTitle
+                              : true)
+                          : _showTitle,
+                      onToggleDeadline: () {
+                        if (currentGoal != null) {
+                          _toggleDeadline(currentGoal!);
+                        }
+                      },
+                      onAddSubGoal: () {
+                        _addSubGoalFromFullScreen();
+                      },
+                      // 倒计时功能已移除
+                      onViewSubGoals: _viewSubGoals,
+                    );
+                  },
+                )
+              : GoalOperationMenu(
+                  currentGoal: currentGoal,
+                  onStatusChange: () {
+                    if (currentGoal != null) {
+                      _showStatusDialog(currentGoal!);
+                    }
+                  },
+                  onDelete: _deleteCurrentGoal,
+                  onShare: () {
+                    if (currentGoal != null) {
+                      _showShareDialog(currentGoal!);
+                    }
+                  },
+                  // 倒计时功能已移除
+                  onToggleTime: _toggleShowTime,
+                  showTime: _featureToggles.timeDisplayWriteThrough
+                      ? (context.read<GoalBloc>().state is GoalsLoaded
+                          ? (context.read<GoalBloc>().state as GoalsLoaded).showTime
+                          : true)
+                      : _showTime,
+                  onToggleDescription: _toggleShowDescription,
+                  showDescription: _featureToggles.descriptionDisplayWriteThrough
+                      ? (context.read<GoalBloc>().state is GoalsLoaded
+                          ? (context.read<GoalBloc>().state as GoalsLoaded).showDescription
+                          : true)
+                      : _showDescription,
+                  onToggleTitle: _toggleShowTitle,
+                  showTitle: _featureToggles.titleDisplayWriteThrough
+                      ? (context.read<GoalBloc>().state is GoalsLoaded
+                          ? (context.read<GoalBloc>().state as GoalsLoaded).showTitle
+                          : true)
+                      : _showTitle,
+                  onToggleDeadline: () {
+                    if (currentGoal != null) {
+                      _toggleDeadline(currentGoal!);
+                    }
+                  },
+                  onAddSubGoal: () {
+                    _addSubGoalFromFullScreen();
+                  },
+                  // 倒计时功能已移除
+                  onViewSubGoals: _viewSubGoals,
+                )),
+      ],
+    );
+  }
+
+
 
   // 日志方法，用于追踪BLoC相关操作
   void _log(String message, [bool forceLog = false]) {
@@ -1555,15 +2022,33 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   }
 
   void _onChangeView() {
-    // 第二阶段迁移：使用BLoC事件切换视图，移除setState
-    final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-    if (isBlocModeEnabled) {
-      final nextView = (currentView + 1) % 3;
-      context.read<GoalBloc>().add(ToggleViewMode(nextView));
+    // 批次1灰度实施：viewMode写路径BLoC化
+    if (_featureToggles.viewModeWriteThrough) {
+      // 新路径：Guard检查 + BLoC状态取值 + 事件驱动
+      final currentState = context.read<GoalBloc>().state;
+      if (currentState is GoalsLoaded) {
+        // 性能监控开始
+        UIStatePerformanceMonitor.startMeasure('viewMode_toggle');
+        UIStatePerformanceMonitor.recordEvent('viewMode_toggle');
+
+        // 从BLoC状态计算下一个视图模式，确保一致性
+        final nextView = (currentState.viewMode + 1) % 3;
+        context.read<GoalBloc>().add(ToggleViewMode(nextView));
+
+        print('【批次1灰度】viewMode切换: ${currentState.viewMode} -> $nextView');
+      } else {
+        // Guard保护：非GoalsLoaded状态禁用操作
+        UIStatePerformanceMonitor.recordError('viewMode_toggle');
+        print('【批次1灰度】viewMode切换被禁用：当前状态${currentState.runtimeType}');
+      }
     } else {
+      // 传统路径：完全保持不变
+      final nextView = (currentView + 1) % 3;
       setState(() {
-        currentView = (currentView + 1) % 3;
+        currentView = nextView;
       });
+      context.read<GoalBloc>().add(ToggleViewMode(nextView));
+      print('【传统模式】viewMode切换: $currentView -> $nextView');
     }
   }
 
@@ -1573,134 +2058,438 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       return const Center(child: Text('没有目标'));
     }
 
+    // 当开启全屏只读渲染时，从 BLoC 状态驱动 showXxx，并直接派发事件
+    if (_featureToggles.fullScreenBlocDriven) {
+      return BlocBuilder<GoalBloc, GoalState>(
+        buildWhen: (prev, curr) {
+          if (prev is GoalsLoaded && curr is GoalsLoaded) {
+            return prev.showTitle != curr.showTitle ||
+                prev.showDescription != curr.showDescription ||
+                prev.showTime != curr.showTime ||
+                prev.currentGoal?.id != curr.currentGoal?.id ||
+                prev.isEditingTitle != curr.isEditingTitle ||
+                prev.isEditingDescription != curr.isEditingDescription;
+          }
+          return prev.runtimeType != curr.runtimeType;
+        },
+        builder: (context, state) {
+          if (state is GoalsLoaded) {
+            return FullScreenView(
+              currentGoal: _featureToggles.currentGoalSelectionWriteThrough
+                  ? state.currentGoal
+                  : currentGoal,
+              goals: state.goals, // 批次2修复：使用BLoC状态中的最新goals数据
+              isEditingTitle: _featureToggles.titleEditingWriteThrough
+                  ? state.isEditingTitle
+                  : _isEditingTitle,
+              titleController: _titleController,
+              onTitleEdit: _startTitleEdit,
+              onTitleSave: _saveTitleEdit,
+              onDescriptionEdit: () {
+                _startDescriptionEdit();
+              },
+              // 批次2重构：添加描述编辑参数，与标题编辑保持一致
+              isEditingDescription: _featureToggles.descriptionEditingWriteThrough
+                  ? state.isEditingDescription
+                  : _isEditingDescription,
+              descriptionController: _descriptionController,
+              onDescriptionSave: () {
+                final description = _descriptionController.text;
+                context.read<GoalBloc>().add(SaveDescription(description));
+              },
+              onSaveDescription: _updateGoalDescription, // 保留兼容性
+              onImagePick: _pickImage,
+              onGoalSelect: (goal) {
+                _selectGoal(goal);
+              },
+              onAddGoal: () => _addNewGoalWrapper(),
+              onStatusChange: _handleUpdateGoalStatusSimple,
+              onUpdateDate: _updateGoalDate,
+              showTime: state.showTime,
+              showDescription: state.showDescription,
+              showTitle: state.showTitle,
+              onToggleTitle: () {
+                context
+                    .read<GoalBloc>()
+                    .add(ToggleTitleDisplay(!state.showTitle));
+              },
+              onToggleDeadline: _toggleDeadline,
+              onAddSubGoal: () => _addSubGoalFromFullScreen(),
+              // 倒计时功能已移除
+            );
+          }
+          // 回退到本地渲染
+          return FullScreenView(
+            currentGoal: _featureToggles.currentGoalSelectionWriteThrough
+                ? (context.read<GoalBloc>().state is GoalsLoaded
+                    ? (context.read<GoalBloc>().state as GoalsLoaded).currentGoal
+                    : currentGoal)
+                : currentGoal,
+            goals: (context.read<GoalBloc>().state is GoalsLoaded
+                ? (context.read<GoalBloc>().state as GoalsLoaded).goals
+                : goals), // 批次2修复：确保使用最新的BLoC状态数据
+            isEditingTitle: _featureToggles.titleEditingWriteThrough
+                ? (context.read<GoalBloc>().state is GoalsLoaded
+                    ? (context.read<GoalBloc>().state as GoalsLoaded).isEditingTitle
+                    : _isEditingTitle)
+                : _isEditingTitle,
+            titleController: _titleController,
+            onTitleEdit: _startTitleEdit,
+            onTitleSave: _saveTitleEdit,
+            onDescriptionEdit: () {
+              context.read<GoalBloc>().add(const StartEditingDescription());
+            },
+            // 批次2重构：添加描述编辑参数，与标题编辑保持一致
+            isEditingDescription: _featureToggles.descriptionEditingWriteThrough
+                ? (context.read<GoalBloc>().state is GoalsLoaded
+                    ? (context.read<GoalBloc>().state as GoalsLoaded).isEditingDescription
+                    : _isEditingDescription)
+                : _isEditingDescription,
+            descriptionController: _descriptionController,
+            onDescriptionSave: () {
+              final description = _descriptionController.text;
+              context.read<GoalBloc>().add(SaveDescription(description));
+            },
+            onSaveDescription: _updateGoalDescription, // 保留兼容性
+            onImagePick: _pickImage,
+            onGoalSelect: (goal) {
+              _selectGoal(goal);
+            },
+            onAddGoal: () => _addNewGoalWrapper(),
+            onStatusChange: _handleUpdateGoalStatusSimple,
+            onUpdateDate: _updateGoalDate,
+            showTime: _featureToggles.timeDisplayWriteThrough
+                ? (context.read<GoalBloc>().state is GoalsLoaded
+                    ? (context.read<GoalBloc>().state as GoalsLoaded).showTime
+                    : true)
+                : _showTime,
+            showDescription: _featureToggles.descriptionDisplayWriteThrough
+                ? (context.read<GoalBloc>().state is GoalsLoaded
+                    ? (context.read<GoalBloc>().state as GoalsLoaded).showDescription
+                    : true)
+                : _showDescription,
+            showTitle: _featureToggles.titleDisplayWriteThrough
+                ? (context.read<GoalBloc>().state is GoalsLoaded
+                    ? (context.read<GoalBloc>().state as GoalsLoaded).showTitle
+                    : true)
+                : _showTitle,
+            onToggleTitle: _toggleShowTitle,
+            onToggleDeadline: _toggleDeadline,
+            onAddSubGoal: () => _addSubGoalFromFullScreen(),
+            // 倒计时功能已移除
+          );
+        },
+      );
+    }
+
+    // 默认：沿用本地态渲染
     return FullScreenView(
-      currentGoal: currentGoal,
-      goals: goals,
-      isEditingTitle: _isEditingTitle,
+      currentGoal: _featureToggles.currentGoalSelectionWriteThrough
+          ? (context.read<GoalBloc>().state is GoalsLoaded
+              ? (context.read<GoalBloc>().state as GoalsLoaded).currentGoal
+              : currentGoal)
+          : currentGoal,
+      goals: (context.read<GoalBloc>().state is GoalsLoaded
+          ? (context.read<GoalBloc>().state as GoalsLoaded).goals
+          : goals), // 批次2修复：确保使用最新的BLoC状态数据
+      isEditingTitle: _featureToggles.titleEditingWriteThrough
+          ? (context.read<GoalBloc>().state is GoalsLoaded
+              ? (context.read<GoalBloc>().state as GoalsLoaded).isEditingTitle
+              : _isEditingTitle)
+          : _isEditingTitle,
       titleController: _titleController,
       onTitleEdit: _startTitleEdit,
       onTitleSave: _saveTitleEdit,
       onDescriptionEdit: () {
-        // 第二阶段迁移：使用BLoC事件切换描述显示，移除setState
-        final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-        if (isBlocModeEnabled) {
-          context
-              .read<GoalBloc>()
-              .add(ToggleDescriptionDisplay(!_showDescription));
-        } else {
-          setState(() {
-            _showDescription = !_showDescription;
-          });
-        }
+        _startDescriptionEdit();
       },
-      onSaveDescription: _updateGoalDescription,
+      // 批次2重构：添加描述编辑参数，与标题编辑保持一致
+      isEditingDescription: _featureToggles.descriptionEditingWriteThrough
+          ? (context.read<GoalBloc>().state is GoalsLoaded
+              ? (context.read<GoalBloc>().state as GoalsLoaded).isEditingDescription
+              : _isEditingDescription)
+          : _isEditingDescription,
+      descriptionController: _descriptionController,
+      onDescriptionSave: () {
+        final description = _descriptionController.text;
+        context.read<GoalBloc>().add(SaveDescription(description));
+      },
+      onSaveDescription: _updateGoalDescription, // 保留兼容性
       onImagePick: _pickImage,
       onGoalSelect: (goal) {
-        // 第二阶段迁移：使用BLoC事件选择目标，移除setState
-        final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-        if (isBlocModeEnabled) {
-          context.read<GoalBloc>().add(SelectGoal(goal));
-        } else {
-          setState(() {
-            currentGoal = goal;
-          });
-        }
+        // 批次2：使用统一的目标选择方法
+        _selectGoal(goal);
       },
       onAddGoal: () => _addNewGoalWrapper(),
       onStatusChange: _handleUpdateGoalStatusSimple,
       onUpdateDate: _updateGoalDate,
-      showTime: _showTime,
-      showDescription: _showDescription,
-      showTitle: _showTitle,
-      onToggleTitle: () {
-        // 第二阶段迁移：使用BLoC事件切换标题显示，移除setState
-        final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-        if (isBlocModeEnabled) {
-          context.read<GoalBloc>().add(ToggleTitleDisplay(!_showTitle));
-        } else {
-          setState(() {
-            _showTitle = !_showTitle;
-          });
-        }
-      },
+      showTime: _featureToggles.timeDisplayWriteThrough
+          ? (context.read<GoalBloc>().state is GoalsLoaded
+              ? (context.read<GoalBloc>().state as GoalsLoaded).showTime
+              : true)
+          : _showTime,
+      showDescription: _featureToggles.descriptionDisplayWriteThrough
+          ? (context.read<GoalBloc>().state is GoalsLoaded
+              ? (context.read<GoalBloc>().state as GoalsLoaded).showDescription
+              : true)
+          : _showDescription,
+      showTitle: _featureToggles.titleDisplayWriteThrough
+          ? (context.read<GoalBloc>().state is GoalsLoaded
+              ? (context.read<GoalBloc>().state as GoalsLoaded).showTitle
+              : true)
+          : _showTitle,
+      onToggleTitle: _toggleShowTitle,
       onToggleDeadline: _toggleDeadline,
       onAddSubGoal: () => _addSubGoalFromFullScreen(),
-      onSetCustomCountdown: (goal, days) =>
-          _setCustomCountdownForGoal(goal, days),
-      hasCustomCountdown: currentGoal?.hasCustomCountdown ?? false,
+      // 倒计时功能已移除
     );
   }
 
-  // 开始编辑标题
-  void _startTitleEdit() {
-    // 确保有当前目标
-    if (currentGoal == null) {
-      print('【GoalPage】无法编辑标题：没有选中的目标');
-      return;
+  // 批次2：统一的目标选择方法（三路径架构）
+  void _selectGoal(Goal goal) {
+    if (_featureToggles.currentGoalSelectionWriteThrough) {
+      // 新路径：编辑会话检查 + Guard保护 + BLoC事件驱动
+      final currentState = context.read<GoalBloc>().state;
+      if (currentState is GoalsLoaded) {
+        // 检查是否有未保存的编辑
+        if (currentState.isEditingTitle || currentState.isEditingDescription) {
+          // 有编辑会话：显示未保存提示
+          _showUnsavedChangesDialog(
+            onSave: () => _saveAndSwitchGoal(goal),
+            onDiscard: () => _discardAndSwitchGoal(goal),
+            onCancel: () => {}, // 取消切换
+          );
+        } else {
+          // 无编辑冲突：直接切换
+          context.read<GoalBloc>().add(SelectGoal(goal));
+          print('【批次2灰度】目标选择: ${goal.id}');
+        }
+      } else {
+        // Guard保护：非GoalsLoaded状态禁用操作
+        print('【批次2灰度】目标选择被禁用：当前状态${currentState.runtimeType}');
+      }
+    } else {
+      // 传统路径：保持不变
+      setState(() {
+        currentGoal = goal;
+      });
+      context.read<GoalBloc>().add(SelectGoal(goal));
+      print('【传统模式】目标选择: ${goal.id}');
+    }
+  }
+
+  // 批次2：未保存修改保护对话框
+  void _showUnsavedChangesDialog({
+    required VoidCallback onSave,
+    required VoidCallback onDiscard,
+    required VoidCallback onCancel,
+  }) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('未保存的修改'),
+        content: const Text('您有未保存的修改，是否要保存？'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              onCancel();
+            },
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              onDiscard();
+            },
+            child: const Text('丢弃'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              onSave();
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 批次2：保存并切换目标
+  void _saveAndSwitchGoal(Goal goal) {
+    // 保存当前编辑（简化版本）
+    final isEditingTitle = _featureToggles.titleEditingWriteThrough
+        ? (context.read<GoalBloc>().state is GoalsLoaded
+            ? (context.read<GoalBloc>().state as GoalsLoaded).isEditingTitle
+            : _isEditingTitle)
+        : _isEditingTitle;
+
+    final isEditingDescription = _featureToggles.descriptionEditingWriteThrough
+        ? (context.read<GoalBloc>().state is GoalsLoaded
+            ? (context.read<GoalBloc>().state as GoalsLoaded).isEditingDescription
+            : _isEditingDescription)
+        : _isEditingDescription;
+
+    if (isEditingTitle) {
+      _saveTitleEdit();
+    }
+    if (isEditingDescription) {
+      // 描述编辑保存逻辑（暂时简化）
+      if (_featureToggles.descriptionEditingWriteThrough) {
+        context.read<GoalBloc>().add(const CancelEditing());
+      }
     }
 
-    // 检查BLoC适配器执行模式状态和标题编辑功能开关
-    final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-    final bool isTitleEditingEnabled = _featureToggles.titleEditing;
+    // 切换目标
+    context.read<GoalBloc>().add(SelectGoal(goal));
+    print('【批次2灰度】保存并切换目标: ${goal.id}');
+  }
 
-    print(
-        '【GoalPage】开始编辑标题，BLoC模式: ${isBlocModeEnabled && isTitleEditingEnabled}, 目标ID: ${currentGoal!.id}');
+  // 批次2：丢弃并切换目标
+  void _discardAndSwitchGoal(Goal goal) {
+    // 取消编辑状态（简化版本）
+    final isEditingTitle = _featureToggles.titleEditingWriteThrough
+        ? (context.read<GoalBloc>().state is GoalsLoaded
+            ? (context.read<GoalBloc>().state as GoalsLoaded).isEditingTitle
+            : _isEditingTitle)
+        : _isEditingTitle;
 
-    if (isBlocModeEnabled && isTitleEditingEnabled) {
-      // 首先确保BLoC知道当前选中的目标
-      context.read<GoalBloc>().add(SelectGoal(currentGoal!));
+    final isEditingDescription = _featureToggles.descriptionEditingWriteThrough
+        ? (context.read<GoalBloc>().state is GoalsLoaded
+            ? (context.read<GoalBloc>().state as GoalsLoaded).isEditingDescription
+            : _isEditingDescription)
+        : _isEditingDescription;
 
-      // 然后使用BLoC触发标题编辑事件
-      context.read<GoalBloc>().add(const StartEditingTitle());
+    if (isEditingTitle || isEditingDescription) {
+      if (_featureToggles.titleEditingWriteThrough || _featureToggles.descriptionEditingWriteThrough) {
+        // 新路径：BLoC事件驱动
+        context.read<GoalBloc>().add(const CancelEditing());
+      } else {
+        // 传统路径：setState
+        setState(() {
+          _isEditingTitle = false;
+          _isEditingDescription = false;
+        });
+        // 恢复原始标题
+        if (currentGoal != null) {
+          _titleController.text = currentGoal!.title;
+        }
+      }
+    }
+    // 描述编辑功能暂时简化处理
 
-      // 设置标题控制器文本
-      _titleController.text = currentGoal!.title;
+    // 切换目标
+    context.read<GoalBloc>().add(SelectGoal(goal));
+    print('【批次2灰度】丢弃并切换目标: ${goal.id}');
+  }
 
-      // 第二阶段迁移：使用BLoC事件更新编辑中的标题文本，移除setState
-      context.read<GoalBloc>().add(UpdateEditingTitle(currentGoal!.title));
+  // 批次2：开始编辑标题（三路径架构）
+  void _startTitleEdit() {
+    if (_featureToggles.titleEditingWriteThrough) {
+      // 新路径：编辑会话检查 + Guard保护 + BLoC事件驱动
+      final currentState = context.read<GoalBloc>().state;
+      if (currentState is GoalsLoaded &&
+          currentState.currentGoal != null &&
+          !currentState.isEditingTitle) {  // 确保无其他编辑会话
+
+        // 初始化TextEditingController
+        final initialValue = TextEditingValue(
+          text: currentState.currentGoal!.title,
+          selection: TextSelection.collapsed(offset: currentState.currentGoal!.title.length),
+        );
+        _titleController.value = initialValue;
+
+        // 启动编辑会话
+        context.read<GoalBloc>().add(const StartEditingTitle());
+
+        print('【批次2灰度】开始标题编辑: ${currentState.currentGoal!.id}');
+      } else {
+        // Guard保护：无有效目标或有其他编辑会话
+        print('【批次2灰度】标题编辑被禁用：${_getEditingBlockReason(currentState)}');
+      }
     } else {
-      // 保持原有行为
+      // 传统路径：完全保持不变
+      if (currentGoal == null) {
+        print('【GoalPage】无法编辑标题：没有选中的目标');
+        return;
+      }
+
+      print('【GoalPage】开始编辑标题，目标ID: ${currentGoal!.id}');
+
+      // 简化逻辑：直接设置编辑状态确保UI响应
       _titleController.text = currentGoal!.title;
       setState(() {
         _isEditingTitle = true;
       });
+
+      // 同时发送BLoC事件用于状态同步
+      context.read<GoalBloc>().add(SelectGoal(currentGoal!));
+      context.read<GoalBloc>().add(const StartEditingTitle());
     }
   }
 
-  // 保存标题
+  // 批次2：获取编辑阻止原因
+  String _getEditingBlockReason(GoalState state) {
+    if (state is! GoalsLoaded) {
+      return '当前状态${state.runtimeType}';
+    }
+    if (state.currentGoal == null) {
+      return '无有效目标';
+    }
+    if (state.isEditingTitle) {
+      return '标题编辑中';
+    }
+    if (state.isEditingDescription) {
+      return '描述编辑中';
+    }
+    return '未知原因';
+  }
+
+  // 批次2：保存标题（三路径架构）
   void _saveTitleEdit() {
-    // 检查BLoC适配器执行模式状态和标题编辑功能开关
-    final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-    final bool isTitleEditingEnabled = _featureToggles.titleEditing;
+    if (_featureToggles.titleEditingWriteThrough) {
+      // 新路径：Guard检查 + BLoC事件驱动
+      final currentState = context.read<GoalBloc>().state;
+      if (currentState is GoalsLoaded &&
+          currentState.currentGoal != null &&
+          currentState.isEditingTitle) {
 
-    if (_titleController.text.isNotEmpty && currentGoal != null) {
-      final updatedGoal = currentGoal!.copyWith(
-        title: _titleController.text,
-      );
-
-      print(
-          '【GoalPage】保存标题编辑，BLoC模式: ${isBlocModeEnabled && isTitleEditingEnabled}, 新标题: ${_titleController.text}');
-
-      // 根据BLoC模式状态选择更新方法
-      if (isBlocModeEnabled && isTitleEditingEnabled) {
-        // 第二阶段迁移：使用SaveTitle事件保存标题，移除setState
-        context.read<GoalBloc>().add(SaveTitle(_titleController.text));
+        if (_titleController.text.trim().isNotEmpty) {
+          // 保存标题
+          context.read<GoalBloc>().add(SaveTitle(_titleController.text.trim()));
+          print('【批次2灰度】保存标题编辑: ${_titleController.text.trim()}');
+        } else {
+          // 取消编辑（空标题）
+          context.read<GoalBloc>().add(const CancelEditing());
+          print('【批次2灰度】取消标题编辑：空标题');
+        }
       } else {
-        // 使用传统方式更新目标
-        _updateGoal(updatedGoal);
-
-        setState(() {
-          _isEditingTitle = false;
-        });
+        print('【批次2灰度】保存标题被禁用：${_getEditingBlockReason(currentState)}');
       }
     } else {
-      // 第二阶段迁移：使用CancelEditing事件取消编辑，移除setState
-      if (isBlocModeEnabled && isTitleEditingEnabled) {
-        context.read<GoalBloc>().add(const CancelEditing());
-      } else {
+      // 传统路径：完全保持不变
+      if (_titleController.text.isNotEmpty && currentGoal != null) {
+        final updatedGoal = currentGoal!.copyWith(
+          title: _titleController.text,
+        );
+
+        print('【GoalPage】保存标题编辑，新标题: ${_titleController.text}');
+
+        // 简化逻辑：直接更新目标和状态确保UI响应
+        _updateGoal(updatedGoal);
         setState(() {
           _isEditingTitle = false;
         });
+
+        // 同时发送BLoC事件用于状态同步
+        context.read<GoalBloc>().add(SaveTitle(_titleController.text));
+      } else {
+        // 取消编辑
+        setState(() {
+          _isEditingTitle = false;
+        });
+        context.read<GoalBloc>().add(const CancelEditing());
       }
     }
   }
@@ -1738,13 +2527,13 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w600,
-                        color: Colors.black.withOpacity(0.9),
+                        color: Colors.black.withValues(alpha: 0.9),
                       ),
                     ),
                     IconButton(
                       icon: Icon(
                         Icons.close,
-                        color: Colors.black.withOpacity(0.6),
+                        color: Colors.black.withValues(alpha: 0.6),
                         size: 24,
                       ),
                       onPressed: () => Navigator.pop(context),
@@ -1766,17 +2555,17 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
                   cursorWidth: 2.0,
                   style: TextStyle(
                     fontSize: 16,
-                    color: Colors.black.withOpacity(0.8),
+                    color: Colors.black.withValues(alpha: 0.8),
                     height: 1.5,
                   ),
                   decoration: InputDecoration(
                     hintText: '在这里添加描述',
                     hintStyle: TextStyle(
-                      color: Colors.black.withOpacity(0.3),
+                      color: Colors.black.withValues(alpha: 0.3),
                     ),
                     border: UnderlineInputBorder(
                       borderSide: BorderSide(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Colors.black.withValues(alpha: 0.1),
                       ),
                     ),
                     enabledBorder: UnderlineInputBorder(
@@ -2017,10 +2806,9 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       goals: goals,
       isSubgoal: widget.parentGoal != null,
       onGoalSelect: (goal) {
-        setState(() {
-          currentGoal = goal;
-          currentView = 0;
-        });
+        // 第二阶段迁移完成：使用BLoC事件选择目标
+        context.read<GoalBloc>().add(SelectGoal(goal));
+        context.read<GoalBloc>().add(ToggleViewMode(0));
       },
       onAddGoal: _showAddGoalDialog,
       onSaveNewGoal: (title, description, imagePath, selectedDate) {
@@ -2061,10 +2849,13 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
     return GoalGridView(
       goals: goals,
       onGoalSelect: (goal) {
+        // 本地立即切回全屏，确保可见交互；同时派发BLoC事件同步
         setState(() {
           currentGoal = goal;
           currentView = 0;
         });
+        context.read<GoalBloc>().add(SelectGoal(goal));
+        context.read<GoalBloc>().add(ToggleViewMode(0));
       },
       onAddGoal: _showAddGoalDialog,
       onShowOperationMenu: (context, goal) {
@@ -2074,162 +2865,37 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
     );
   }
 
-  // 显示删除目标确认对话框
+  // BLoC化的删除目标确认对话框
   void _showDeleteGoalDialog(Goal goal) {
-    // 检查BLoC适配器执行模式状态
-    final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-
     showDialog(
       context: context,
-      builder: (BuildContext dialogContext) {
-        return Dialog(
-          backgroundColor: Colors.white,
-          elevation: 0,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 20),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(28),
-          ),
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // 标题栏
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        '删除',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black.withOpacity(0.9),
-                        ),
-                      ),
-                      IconButton(
-                        icon: Icon(
-                          Icons.close,
-                          color: Colors.black.withOpacity(0.6),
-                          size: 24,
-                        ),
-                        onPressed: () => Navigator.pop(dialogContext),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-                    ],
-                  ),
-                ),
-                // 确认信息
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(24, 0, 24, 16),
-                  child: Text(
-                    '您确定要删除这个目标吗？此操作无法撤销。',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.black87,
-                      height: 1.5,
-                    ),
-                  ),
-                ),
-                // 添加BLoC模式提示（如果启用）
-                if (isBlocModeEnabled)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.green.shade200),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.check_circle_outline,
-                            color: Colors.green,
-                            size: 16,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'BLoC模式已启用，将使用BLoC架构删除目标',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.green.shade800,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                // 按钮区域
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      // 取消按钮
-                      TextButton(
-                        onPressed: () => Navigator.pop(dialogContext),
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                        ),
-                        child: const Text(
-                          '取消',
-                          style: TextStyle(
-                            color: Colors.black54,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      // 确认删除按钮
-                      ElevatedButton(
-                        onPressed: () {
-                          Navigator.pop(dialogContext);
-                          // 根据BLoC模式状态选择删除方法
-                          if (isBlocModeEnabled) {
-                            _deleteGoalWithBloc(goal);
-                          } else {
-                            _deleteGoal(goal);
-                          }
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 10,
-                          ),
-                        ),
-                        child: const Text(
-                          '删除',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+      builder: (context) => ConfirmationDialogBloc(
+        title: '删除目标',
+        message: '您确定要删除这个目标吗？此操作无法撤销。',
+        confirmText: '删除',
+        cancelText: '取消',
+        onConfirm: () {
+          // 第二阶段迁移完成：使用BLoC事件删除目标
+          if (_featureToggles.writeThroughBloc) {
+            context.read<GoalBloc>().add(DeleteGoalWithCleanup(
+                  goal,
+                  deleteSubGoals: true,
+                  updateCurrent: true,
+                ));
+          } else {
+            // 阶段0：避免双写，使用只读方式同步
+            context.read<GoalBloc>().add(const LoadGoals());
+            context.read<GoalBloc>().add(RefreshGoalTree());
+            if (goals.isNotEmpty) {
+              context.read<GoalBloc>().add(SelectGoal(goals.first));
+            }
+          }
+        },
+      ),
     );
   }
 
-  // 添加新建目标的方法
+  // BLoC化的添加目标对话框方法
   void _showAddGoalDialog() {
     print('添加新目标，当前会员状态: $_membershipStatus');
 
@@ -2267,337 +2933,14 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       print('用户会员状态: $memberLevel，允许创建新项目');
     }
 
-    // 以下是原有的添加目标弹窗逻辑
-    final TextEditingController titleController = TextEditingController();
-    final TextEditingController descriptionController = TextEditingController();
-    // 移除 selectedDate 变量，不再需要日期选择
-    String? imagePath;
-
-    // 检查BLoC适配器执行模式状态
-    final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-
-    // 创建一个StatefulBuilder以确保弹窗内的状态更新能够刷新UI
+    // 第二阶段迁移完成：使用BLoC化的对话框组件
     showDialog(
       context: context,
       barrierDismissible: true,
-      builder: (BuildContext context) => StatefulBuilder(
-          builder: (BuildContext context, StateSetter setDialogState) {
-        return Dialog(
-          backgroundColor: Colors.white,
-          elevation: 0,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 20),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(28),
-          ),
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // 标题栏
-                Container(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(
-                        color: Colors.black.withOpacity(0.1),
-                        width: 1,
-                      ),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.parentGoal != null ? '新建子条目' : '新建条目',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.black.withOpacity(0.9),
-                            ),
-                          ),
-                          if (widget.parentGoal != null) ...[
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                Text(
-                                  widget.parentGoal!.title.length > 15
-                                      ? widget.parentGoal!.title
-                                              .substring(0, 12) +
-                                          '...'
-                                      : widget.parentGoal!.title,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.black.withOpacity(0.5),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ],
-                      ),
-                      IconButton(
-                        icon: Icon(
-                          Icons.close,
-                          color: Colors.black.withOpacity(0.6),
-                          size: 24,
-                        ),
-                        onPressed: () => Navigator.pop(context),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-                    ],
-                  ),
-                ),
-                // 内容区域 - 使用SingleChildScrollView
-                SingleChildScrollView(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // 目标标题标签(必填)
-                        Row(
-                          children: [
-                            const Text(
-                              '*',
-                              style: TextStyle(
-                                color: Colors.red,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '标题',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.black.withOpacity(0.6),
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        // 目标标题输入
-                        Container(
-                          decoration: BoxDecoration(
-                            color: Colors.grey[50],
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: TextField(
-                            controller: titleController,
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.black.withOpacity(0.8),
-                            ),
-                            decoration: InputDecoration(
-                              hintText: '输入标题',
-                              hintStyle: TextStyle(
-                                color: Colors.black.withOpacity(0.3),
-                              ),
-                              border: InputBorder.none,
-                              contentPadding:
-                                  const EdgeInsets.symmetric(vertical: 12),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        // 描述标签(非必填)
-                        Text(
-                          '描述',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.black.withOpacity(0.6),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        // 目标描述输入
-                        Container(
-                          decoration: BoxDecoration(
-                            color: Colors.grey[50],
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: TextField(
-                            controller: descriptionController,
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.black.withOpacity(0.8),
-                            ),
-                            maxLines: 3,
-                            decoration: InputDecoration(
-                              hintText: '输入描述',
-                              hintStyle: TextStyle(
-                                color: Colors.black.withOpacity(0.3),
-                              ),
-                              border: InputBorder.none,
-                              contentPadding:
-                                  const EdgeInsets.symmetric(vertical: 12),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        // 日期和图片选择器
-                        Row(
-                          children: [
-                            // 移除日期选择按钮，只保留图片选择按钮
-                            // 图片选择按钮，修改为调用_showImagePickerForNewGoal
-                            Expanded(
-                              child: GestureDetector(
-                                onTap: () {
-                                  // 显示选择背景弹窗
-                                  _showImagePickerForNewGoal((selectedImagePath,
-                                      {isVideo = false}) {
-                                    // 使用StatefulBuilder的setState刷新弹窗UI
-                                    setDialogState(() {
-                                      imagePath = selectedImagePath;
-                                      // 如果是视频，可以在这里设置额外标记
-                                      // 但由于这是新建目标的弹窗，我们会在创建Goal时设置hasVideo属性
-                                    });
-                                  });
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 12,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey[50],
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.max,
-                                    children: [
-                                      Icon(
-                                        Icons.image,
-                                        size: 16,
-                                        color: Colors.black.withOpacity(0.6),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        imagePath == null ? '选择背景' : '已选择背景',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          color: Colors.black.withOpacity(0.6),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        // 添加BLoC模式选择
-                        if (isBlocModeEnabled) ...[
-                          const SizedBox(height: 16),
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.green.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.green.shade200),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.check_circle_outline,
-                                  color: Colors.green,
-                                  size: 16,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'BLoC模式已启用，将使用BLoC架构添加目标',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.green.shade800,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-                Container(
-                  margin: const EdgeInsets.all(24),
-                  child: ElevatedButton(
-                    onPressed: () {
-                      if (titleController.text.isNotEmpty) {
-                        // 检查是否是视频文件
-                        bool isVideo = false;
-                        if (imagePath != null) {
-                          final lowerPath = imagePath!.toLowerCase();
-                          isVideo = lowerPath.endsWith('.mp4') ||
-                              lowerPath.endsWith('.mov') ||
-                              lowerPath.endsWith('.avi') ||
-                              lowerPath.endsWith('.wmv') ||
-                              lowerPath.endsWith('.mkv');
-                        }
-
-                        final newGoal = Goal(
-                          title: titleController.text,
-                          description: descriptionController.text,
-                          imagePath:
-                              imagePath ?? 'assets/images/default/default.jpg',
-                          createdTime: DateTime.now(),
-                          targetDate: null, // 不设置目标日期
-                          parentId: widget.parentGoal?.id,
-                          videoPath: isVideo ? imagePath : null,
-                          hasVideo: isVideo,
-                          videoMuted: false, // 默认不静音
-                        );
-
-                        // 先关闭弹窗
-                        Navigator.pop(context);
-
-                        // 暂时禁用BLoC模式，使用传统方式添加目标
-                        // 根据BLoC模式状态选择添加方法
-                        /*if (isBlocModeEnabled) {
-                          // 使用BLoC架构添加目标
-                          _addNewGoalWithBloc(newGoal);
-                        } else {*/
-                        // 使用传统方式添加目标
-                        _addNewGoal(newGoal);
-                        //}
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.black,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    child: Text(
-                      widget.parentGoal != null ? '创建子条目' : '创建条目',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      }),
+      builder: (context) => AddGoalDialogBloc(
+        parentGoal: widget.parentGoal,
+        membershipStatus: _membershipStatus,
+      ),
     );
   }
 
@@ -2836,9 +3179,10 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
                       label: '进行中',
                       isSelected: goal.status == GoalStatus.pending,
                       onTap: () {
-                        setState(() {
-                          goal.status = GoalStatus.pending;
-                        });
+                        // 第二阶段迁移完成：使用BLoC事件更新目标状态
+                        final updatedGoal =
+                            goal.copyWith(status: GoalStatus.pending);
+                        context.read<GoalBloc>().add(UpdateGoal(updatedGoal));
                         Navigator.pop(context);
                       },
                       isPending: true,
@@ -2848,9 +3192,10 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
                       label: '已完成',
                       isSelected: goal.status == GoalStatus.completed,
                       onTap: () {
-                        setState(() {
-                          goal.status = GoalStatus.completed;
-                        });
+                        // 第二阶段迁移完成：使用BLoC事件更新目标状态
+                        final updatedGoal =
+                            goal.copyWith(status: GoalStatus.completed);
+                        context.read<GoalBloc>().add(UpdateGoal(updatedGoal));
                         Navigator.pop(context);
                       },
                       isPending: false,
@@ -2860,9 +3205,10 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
                       label: '已放弃',
                       isSelected: goal.status == GoalStatus.abandoned,
                       onTap: () {
-                        setState(() {
-                          goal.status = GoalStatus.abandoned;
-                        });
+                        // 第二阶段迁移完成：使用BLoC事件更新目标状态
+                        final updatedGoal =
+                            goal.copyWith(status: GoalStatus.abandoned);
+                        context.read<GoalBloc>().add(UpdateGoal(updatedGoal));
                         Navigator.pop(context);
                       },
                       isPending: false,
@@ -2927,18 +3273,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
     );
   }
 
-  // 切换倒计时显示
-  void _toggleCountdown() {
-    // 第二阶段迁移：使用BLoC事件切换倒计时显示，移除setState
-    final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-    if (isBlocModeEnabled) {
-      context.read<GoalBloc>().add(ToggleCountdownDisplay(!_showCountdown));
-    } else {
-      setState(() {
-        _showCountdown = !_showCountdown;
-      });
-    }
-  }
+  // 倒计时功能已移除，等架构稳定后重新实现
 
   // 显示分享对话框
   void _showShareDialog(Goal goal) {
@@ -3007,8 +3342,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       });
     }
 
-    // 检查BLoC适配器执行模式状态
-    final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
+    // 已移除：开发者选项相关代码
 
     return Drawer(
       child: Container(
@@ -3018,140 +3352,12 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           child: Column(
             children: [
               Expanded(
-                child: GoalTreeView(
+                child: GoalTreeViewBloc(
                   goals: allGoals,
-                  onSearchTap: () {
-                    _showSearch();
-                  },
-                  onSyncTap: _handleSyncTap,
                   membershipStatus: _membershipStatus,
-                  onDeleteGoal: _handleDeleteGoalFromTree,
-                  onUpdateGoalStatus: _handleUpdateGoalStatusFromTree,
-                  onGoalSelect: (goal) {
-                    // 关闭抽屉
-                    Navigator.pop(context);
-
-                    // 直接加载目标，而不是通过路由
-                    print(
-                        '【GoalPage】从目标树选择目标: ID=${goal.id}, 标题=${goal.title}, 父ID=${goal.parentId}, 是否子目标=${goal.parentId != null}');
-                    _loadSpecificGoal(goal.id!);
-                  },
                   isLoggedIn: authService.isLoggedIn,
                   userAvatar: authService.avatarUrl,
-                  onSettingsTap: () {
-                    // 关闭抽屉
-                    Navigator.pop(context);
-
-                    // 使用NavigationService导航到设置页面
-                    NavigationService().navigateTo(AppRoutes.settings);
-                  },
-                  onLoginTap: () {
-                    // 关闭抽屉
-                    Navigator.pop(context);
-
-                    // 使用NavigationService导航到登录页面
-                    NavigationService().navigateTo(AppRoutes.login);
-                  },
-                  onLogout: _handleLogout,
-                  onExploreTab: () {
-                    // 关闭抽屉
-                    Navigator.pop(context);
-
-                    // 使用NavigationService导航到探索页面
-                    NavigationService().navigateTo(AppRoutes.explore);
-                  },
-                ),
-              ),
-              // 开发者选项区域
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.grey[200],
-                  border: Border(top: BorderSide(color: Colors.grey[300]!)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '开发者选项',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'BLoC模式',
-                          style: TextStyle(fontSize: 14),
-                        ),
-                        Switch(
-                          value: isBlocModeEnabled,
-                          onChanged: (value) {
-                            if (value) {
-                              _enableBlocMode();
-                            } else {
-                              // 禁用BLoC模式
-                              setState(() {
-                                _blocAdapter = GoalPageBlocAdapter(
-                                  context,
-                                  logLevel: 2,
-                                  executeMode: false,
-                                );
-                                print('已禁用BLoC执行模式 - 恢复影子模式');
-                              });
-                            }
-                            Navigator.pop(context); // 关闭抽屉
-                          },
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      isBlocModeEnabled ? '当前模式：BLoC执行模式' : '当前模式：影子模式',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isBlocModeEnabled ? Colors.green : Colors.orange,
-                      ),
-                    ),
-                    const Divider(),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          '性能统计',
-                          style: TextStyle(fontSize: 14),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.bar_chart, size: 20),
-                          onPressed: () {
-                            Navigator.pop(context); // 关闭抽屉
-                            _showPerformanceStats();
-                          },
-                        ),
-                      ],
-                    ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          '错误统计',
-                          style: TextStyle(fontSize: 14),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.error_outline, size: 20),
-                          onPressed: () {
-                            Navigator.pop(context); // 关闭抽屉
-                            ErrorHandler.showErrorStatsDialog(context);
-                          },
-                        ),
-                      ],
-                    ),
-                  ],
+                  userNickname: authService.userName,
                 ),
               ),
             ],
@@ -3162,26 +3368,89 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   }
 
   void _toggleShowTime() {
-    // 第二阶段迁移：使用BLoC事件切换时间显示，移除setState
-    final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-    if (isBlocModeEnabled) {
-      context.read<GoalBloc>().add(ToggleTimeDisplay(!_showTime));
+    // 批次1灰度实施：showTime写路径BLoC化
+    if (_featureToggles.timeDisplayWriteThrough) {
+      // 新路径：Guard检查 + BLoC状态取值 + 事件驱动
+      final currentState = context.read<GoalBloc>().state;
+      if (currentState is GoalsLoaded) {
+        // 性能监控开始
+        UIStatePerformanceMonitor.startMeasure('time_toggle');
+        UIStatePerformanceMonitor.recordEvent('time_toggle');
+
+        // 从BLoC状态取反，确保一致性
+        context.read<GoalBloc>().add(ToggleTimeDisplay(!currentState.showTime));
+
+        print('【批次1灰度】showTime切换: ${!currentState.showTime}');
+      } else {
+        // Guard保护：非GoalsLoaded状态禁用操作
+        UIStatePerformanceMonitor.recordError('time_toggle');
+        print('【批次1灰度】showTime切换被禁用：当前状态${currentState.runtimeType}');
+      }
     } else {
+      // 传统路径：完全保持不变
       setState(() {
         _showTime = !_showTime;
       });
+      context.read<GoalBloc>().add(ToggleTimeDisplay(_showTime));
+      print('【传统模式】showTime切换: $_showTime');
     }
   }
 
   void _toggleShowDescription() {
-    // 第二阶段迁移：使用BLoC事件切换描述显示，移除setState
-    final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-    if (isBlocModeEnabled) {
-      context.read<GoalBloc>().add(ToggleDescriptionDisplay(!_showDescription));
+    // 批次1灰度实施：showDescription写路径BLoC化
+    if (_featureToggles.descriptionDisplayWriteThrough) {
+      // 新路径：Guard检查 + BLoC状态取值 + 事件驱动
+      final currentState = context.read<GoalBloc>().state;
+      if (currentState is GoalsLoaded) {
+        // 性能监控开始
+        UIStatePerformanceMonitor.startMeasure('description_toggle');
+        UIStatePerformanceMonitor.recordEvent('description_toggle');
+
+        // 从BLoC状态取反，确保一致性
+        context.read<GoalBloc>().add(ToggleDescriptionDisplay(!currentState.showDescription));
+
+        print('【批次1灰度】showDescription切换: ${!currentState.showDescription}');
+      } else {
+        // Guard保护：非GoalsLoaded状态禁用操作
+        UIStatePerformanceMonitor.recordError('description_toggle');
+        print('【批次1灰度】showDescription切换被禁用：当前状态${currentState.runtimeType}');
+      }
     } else {
+      // 传统路径：完全保持不变
       setState(() {
         _showDescription = !_showDescription;
       });
+      context.read<GoalBloc>().add(ToggleDescriptionDisplay(_showDescription));
+      print('【传统模式】showDescription切换: $_showDescription');
+    }
+  }
+
+  void _toggleShowTitle() {
+    // 批次1灰度实施：showTitle写路径BLoC化
+    if (_featureToggles.titleDisplayWriteThrough) {
+      // 新路径：Guard检查 + BLoC状态取值 + 事件驱动
+      final currentState = context.read<GoalBloc>().state;
+      if (currentState is GoalsLoaded) {
+        // 性能监控开始
+        UIStatePerformanceMonitor.startMeasure('title_toggle');
+        UIStatePerformanceMonitor.recordEvent('title_toggle');
+
+        // 从BLoC状态取反，确保一致性
+        context.read<GoalBloc>().add(ToggleTitleDisplay(!currentState.showTitle));
+
+        print('【批次1灰度】showTitle切换: ${!currentState.showTitle}');
+      } else {
+        // Guard保护：非GoalsLoaded状态禁用操作
+        UIStatePerformanceMonitor.recordError('title_toggle');
+        print('【批次1灰度】showTitle切换被禁用：当前状态${currentState.runtimeType}');
+      }
+    } else {
+      // 传统路径：完全保持不变
+      setState(() {
+        _showTitle = !_showTitle;
+      });
+      context.read<GoalBloc>().add(ToggleTitleDisplay(_showTitle));
+      print('【传统模式】showTitle切换: $_showTitle');
     }
   }
 
@@ -3440,29 +3709,8 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
         if (selectedDate != null) {
           final updatedGoal = goal.copyWith(targetDate: selectedDate);
 
-          // 检查BLoC适配器执行模式状态
-          final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-
-          if (isBlocModeEnabled) {
-            // 使用BLoC更新
-            context.read<GoalBloc>().add(UpdateGoal(updatedGoal));
-
-            // 立即更新本地状态
-            setState(() {
-              if (currentGoal?.id == goal.id) {
-                currentGoal = updatedGoal;
-              }
-
-              // 同时更新goals列表中的对应项
-              final index = goals.indexWhere((g) => g.id == goal.id);
-              if (index != -1) {
-                goals[index] = updatedGoal;
-              }
-            });
-          } else {
-            // 使用传统方式更新
-            await _updateGoal(updatedGoal);
-          }
+          // 第二阶段迁移完成：统一使用BLoC更新
+          context.read<GoalBloc>().add(UpdateGoal(updatedGoal));
         }
       }
     } catch (e) {
@@ -3474,25 +3722,110 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
     }
   }
 
-  // 更新目标描述
+  // 批次2：更新目标描述（三路径架构）
   void _updateGoalDescription(Goal goal, String newDescription) {
-    final updatedGoal = goal.copyWith(
-      description: newDescription,
-    );
+    if (_featureToggles.descriptionEditingWriteThrough) {
+      // 新路径：Guard检查 + BLoC事件驱动
+      final currentState = context.read<GoalBloc>().state;
+      if (currentState is GoalsLoaded &&
+          currentState.currentGoal != null &&
+          currentState.currentGoal!.id == goal.id) {
 
-    // 检查BLoC适配器执行模式状态和描述编辑功能开关
-    final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-    final bool isDescriptionEditingEnabled = _featureToggles.descriptionEditing;
+        if (newDescription.trim().isNotEmpty || goal.description.isNotEmpty) {
+          // 保存描述（允许空描述）
+          context.read<GoalBloc>().add(SaveDescription(newDescription.trim()));
+          print('【批次2灰度】保存描述编辑: ${newDescription.trim()}');
 
-    print(
-        '【GoalPage】更新目标描述，BLoC模式: ${isBlocModeEnabled && isDescriptionEditingEnabled}');
+          // 强制UI同步：等待BLoC状态更新后手动触发同步
+          Future.delayed(const Duration(milliseconds: 100), () {
+            final updatedState = context.read<GoalBloc>().state;
+            if (updatedState is GoalsLoaded) {
+              print('【批次2修复】强制触发UI同步');
+              syncStateFromBloc(updatedState);
 
-    // 根据BLoC模式状态选择更新方法
-    if (isBlocModeEnabled && isDescriptionEditingEnabled) {
-      // 使用UpdateGoal事件代替SaveDescription事件，确保传递完整的目标信息
-      context.read<GoalBloc>().add(UpdateGoal(updatedGoal));
+              // 额外修复：强制刷新当前页面以确保FullScreenView更新
+              if (mounted) {
+                setState(() {
+                  // 触发页面重建
+                });
+                print('【批次2修复】强制刷新页面UI');
+              }
+            }
+          });
+        } else {
+          // 取消编辑（无变化）
+          context.read<GoalBloc>().add(const CancelEditing());
+          print('【批次2灰度】取消描述编辑：无变化');
+        }
+      } else {
+        print('【批次2灰度】保存描述被禁用：${_getEditingBlockReason(currentState)}');
+      }
     } else {
-      _updateGoal(updatedGoal);
+      // 传统路径：完全保持不变
+      final updatedGoal = goal.copyWith(
+        description: newDescription,
+      );
+
+      // 检查BLoC适配器执行模式状态和描述编辑功能开关
+      final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
+      final bool isDescriptionEditingEnabled = _featureToggles.descriptionEditing;
+
+      print(
+          '【GoalPage】更新目标描述，BLoC模式: ${isBlocModeEnabled && isDescriptionEditingEnabled}');
+
+      // 根据BLoC模式状态选择更新方法
+      if (isBlocModeEnabled && isDescriptionEditingEnabled) {
+        // 使用UpdateGoal事件代替SaveDescription事件，确保传递完整的目标信息
+        context.read<GoalBloc>().add(UpdateGoal(updatedGoal));
+      } else {
+        _updateGoal(updatedGoal);
+      }
+    }
+  }
+
+  // 批次2重构：开始编辑描述，与标题编辑保持完全一致的架构
+  void _startDescriptionEdit() {
+    if (_featureToggles.descriptionEditingWriteThrough) {
+      // 新路径：编辑会话检查 + Guard保护 + BLoC事件驱动
+      final currentState = context.read<GoalBloc>().state;
+      if (currentState is GoalsLoaded &&
+          currentState.currentGoal != null &&
+          !currentState.isEditingTitle &&
+          !currentState.isEditingDescription) {  // 确保无其他编辑会话
+
+        // 初始化TextEditingController（与标题编辑保持一致）
+        final initialValue = TextEditingValue(
+          text: currentState.currentGoal!.description,
+          selection: TextSelection.collapsed(offset: currentState.currentGoal!.description.length),
+        );
+        _descriptionController.value = initialValue;
+
+        // 启动编辑会话
+        context.read<GoalBloc>().add(const StartEditingDescription());
+
+        print('【批次2灰度】开始描述编辑: ${currentState.currentGoal!.id}');
+      } else {
+        // Guard保护：无有效目标或有其他编辑会话
+        print('【批次2灰度】描述编辑被禁用：${_getEditingBlockReason(currentState)}');
+      }
+    } else {
+      // 传统路径：与标题编辑保持一致的处理
+      if (currentGoal == null) {
+        print('【GoalPage】无法编辑描述：没有选中的目标');
+        return;
+      }
+
+      print('【GoalPage】开始编辑描述，目标ID: ${currentGoal!.id}');
+
+      // 简化逻辑：直接设置编辑状态确保UI响应
+      _descriptionController.text = currentGoal!.description;
+      setState(() {
+        _isEditingDescription = true;
+      });
+
+      // 同时发送BLoC事件用于状态同步
+      context.read<GoalBloc>().add(SelectGoal(currentGoal!));
+      context.read<GoalBloc>().add(const StartEditingDescription());
     }
   }
 
@@ -3530,47 +3863,10 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
 
       final updatedGoal = goal.copyWith(status: newStatus);
 
-      // 检查BLoC适配器执行模式状态
-      final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
+      print('【GoalPage】更新目标状态，目标ID: ${goal.id}, 新状态: $newStatus');
 
-      print(
-          '【GoalPage】更新目标状态，BLoC模式: $isBlocModeEnabled, 目标ID: ${goal.id}, 新状态: $newStatus');
-
-      // 根据BLoC模式状态选择更新方法
-      if (isBlocModeEnabled) {
-        // 使用UpdateGoal事件直接更新状态，确保传递完整的目标信息
-        context.read<GoalBloc>().add(UpdateGoal(updatedGoal));
-
-        // 立即更新本地状态，避免UI闪烁
-        setState(() {
-          // 更新当前目标
-          if (currentGoal?.id == goal.id) {
-            currentGoal = updatedGoal;
-          }
-
-          // 同时更新goals列表中的对应项
-          final index = goals.indexWhere((g) => g.id == goal.id);
-          if (index != -1) {
-            goals[index] = updatedGoal;
-          }
-        });
-      } else {
-        await _updateGoal(updatedGoal);
-
-        // 确保UI立即更新
-        setState(() {
-          // 更新当前目标
-          if (currentGoal?.id == goal.id) {
-            currentGoal = updatedGoal;
-          }
-
-          // 同时更新goals列表中的对应项
-          final index = goals.indexWhere((g) => g.id == goal.id);
-          if (index != -1) {
-            goals[index] = updatedGoal;
-          }
-        });
-      }
+      // 第二阶段迁移完成：统一使用BLoC更新
+      context.read<GoalBloc>().add(UpdateGoal(updatedGoal));
     }
   }
 
@@ -3579,60 +3875,11 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
     try {
       final updatedGoal = goal.copyWith(targetDate: newDate);
 
-      // 检查BLoC适配器执行模式状态
-      final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-
       print(
-          '【GoalPage】更新目标日期，BLoC模式: $isBlocModeEnabled, 目标ID: ${goal.id}, 新日期: ${newDate?.toString() ?? "无"}');
+          '【GoalPage】更新目标日期，目标ID: ${goal.id}, 新日期: ${newDate?.toString() ?? "无"}');
 
-      // 根据BLoC模式状态选择更新方法
-      if (isBlocModeEnabled) {
-        // 使用UpdateGoal事件直接更新日期，确保传递完整的目标信息
-        context.read<GoalBloc>().add(UpdateGoal(updatedGoal));
-
-        // 立即更新本地状态，避免UI闪烁
-        setState(() {
-          // 更新当前目标
-          if (currentGoal?.id == goal.id) {
-            currentGoal = updatedGoal;
-          }
-
-          // 同时更新goals列表中的对应项
-          final index = goals.indexWhere((g) => g.id == goal.id);
-          if (index != -1) {
-            goals[index] = updatedGoal;
-          }
-        });
-      } else {
-        // 使用传统方式更新
-        await _updateGoal(updatedGoal);
-
-        // 确保UI立即更新
-        setState(() {
-          // 更新当前目标
-          if (currentGoal?.id == goal.id) {
-            currentGoal = updatedGoal;
-          }
-
-          // 同时更新goals列表中的对应项
-          final index = goals.indexWhere((g) => g.id == goal.id);
-          if (index != -1) {
-            goals[index] = updatedGoal;
-          }
-        });
-
-        // 影子模式：通过BLoC适配器执行相同操作
-        _blocAdapter?.updateGoalDate(
-          goal: goal,
-          newDate: newDate,
-          onSuccess: () {
-            print('【影子模式】目标日期更新成功：${goal.title}');
-          },
-          onError: (error) {
-            print('【影子模式】目标日期更新失败：$error');
-          },
-        );
-      }
+      // 第二阶段迁移完成：统一使用BLoC更新
+      context.read<GoalBloc>().add(UpdateGoal(updatedGoal));
 
       return true;
     } catch (e) {
@@ -3663,39 +3910,9 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
     await _refreshGoalTree();
   }
 
-  // 显示自定义倒计时对话框
-  Future<void> _showCustomCountdownDialog() async {
-    if (currentGoal == null) return;
+  // 倒计时功能已移除，等架构稳定后重新实现
 
-    // 简化版本：只切换倒计时显示状态，不设置具体倒计时
-    setState(() {
-      _showCountdown = !_showCountdown;
-    });
-
-    // 添加提示信息
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('倒计时功能将在架构迁移完成后重新实现'),
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
-  // 为特定目标设置自定义倒计时
-  Future<void> _setCustomCountdownForGoal(Goal goal, int? days) async {
-    // 简化版本：只切换倒计时显示状态
-    setState(() {
-      _showCountdown = days != null;
-    });
-
-    // 添加提示信息
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('倒计时功能将在架构迁移完成后重新实现'),
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
+  // 倒计时功能已移除，等架构稳定后重新实现
 
   // 辅助方法，用于解决类型不匹配问题
   void _addNewGoalWrapper() {
@@ -3916,23 +4133,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
     }
   }
 
-  /// 使用BLoC直接设置自定义倒计时
-  ///
-  /// 这是一个完全使用BLoC架构的方法，不再直接操作数据库
-  Future<void> _setCustomCountdownForGoalWithBloc(Goal goal, int? days) async {
-    // 简化版本：只切换倒计时显示状态
-    setState(() {
-      _showCountdown = days != null;
-    });
-
-    // 添加提示信息
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('倒计时功能将在架构迁移完成后重新实现'),
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
+  // 倒计时功能已移除，等架构稳定后重新实现
 
   /// 使用BLoC直接刷新目标树
   ///
@@ -4126,56 +4327,9 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
     );
   }
 
-  /// 使用搜索功能
-  void _showSearch() {
-    // 检查BLoC适配器执行模式状态
-    final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
+  // 已移除：搜索功能相关方法
 
-    // 根据BLoC模式状态选择搜索方法
-    if (isBlocModeEnabled) {
-      _showSearchWithBloc();
-    } else {
-      showSearch(
-        context: context,
-        delegate: GoalSearchDelegate(goals),
-      );
-    }
-  }
-
-  /// 使用BLoC架构的搜索功能
-  void _showSearchWithBloc() async {
-    try {
-      // 获取SearchBloc
-      final searchBloc = BlocProvider.of<SearchBloc>(context);
-
-      // 显示基于BLoC的搜索代理
-      final selectedGoal = await showSearch<Goal?>(
-        context: context,
-        delegate: GoalSearchDelegateBloc(searchBloc),
-      );
-
-      // 处理选中的目标
-      if (selectedGoal != null && mounted) {
-        setState(() {
-          currentGoal = selectedGoal;
-          currentView = 0; // 切换到全屏视图
-        });
-
-        // 记录性能数据
-        if (_blocAdapter != null) {
-          print('搜索并选择了目标: ${selectedGoal.title}');
-        }
-      }
-    } catch (e) {
-      print('使用BLoC搜索失败: $e');
-
-      // 回退到传统搜索
-      showSearch(
-        context: context,
-        delegate: GoalSearchDelegate(goals),
-      );
-    }
-  }
+  // 已移除：BLoC搜索功能相关方法
 
   // 加载特定目标
   Future<void> _loadSpecificGoal(int goalId) async {
@@ -4284,19 +4438,8 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
             print('【GoalPage】加载根目标: ${siblingGoals.length}个');
           }
 
-          // 第二阶段迁移：使用BLoC事件加载特定目标，移除setState
-          final bool isBlocModeEnabled = _blocAdapter?.executeMode ?? false;
-          if (isBlocModeEnabled) {
-            // 使用BLoC事件加载特定目标
-            context.read<GoalBloc>().add(LoadSpecificGoal(goalId));
-          } else {
-            setState(() {
-              currentGoal = goal;
-              goals = siblingGoals; // 设置同级目标列表
-              currentView = 0; // 切换到全屏视图
-              _isLoading = false;
-            });
-          }
+          // 第二阶段迁移完成：统一使用BLoC事件加载特定目标
+          context.read<GoalBloc>().add(LoadSpecificGoal(goalId));
 
           // 使用BLoC适配器加载特定目标（影子模式）
           _blocAdapter?.loadSpecificGoal(

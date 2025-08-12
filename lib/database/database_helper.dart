@@ -211,6 +211,22 @@ class DatabaseHelper {
     );
   }
 
+  // 重置数据库（删除所有数据）
+  Future<void> resetDatabase() async {
+    print('【DatabaseHelper】开始重置数据库');
+
+    if (kIsWeb) {
+      // Web平台：清除localStorage
+      WebStorage.removeItem('goals');
+      print('【DatabaseHelper】Web平台数据库已重置');
+      return;
+    }
+
+    final db = await database;
+    await db.delete('goals');
+    print('【DatabaseHelper】数据库已重置，所有目标已删除');
+  }
+
   // 删除目标
   Future<int> deleteGoal(int id) async {
     if (kIsWeb) {

@@ -16,6 +16,7 @@ class TimelineView extends StatefulWidget {
       DateTime? targetDate)? onSaveNewGoal;
   final Future<bool> Function(Goal, DateTime?)? onUpdateGoalDate;
   final bool isSubgoal;
+  final int? currentGoalId; // 可选：当前选中用于高亮
 
   const TimelineView({
     super.key,
@@ -26,6 +27,7 @@ class TimelineView extends StatefulWidget {
     this.onSaveNewGoal,
     this.onUpdateGoalDate,
     this.isSubgoal = false,
+    this.currentGoalId,
   });
 
   @override
@@ -235,12 +237,25 @@ class _TimelineViewState extends State<TimelineView> {
         Expanded(
           child: Padding(
             padding: const EdgeInsets.only(left: 12, right: 24, bottom: 12),
-            child: GoalCard(
-              goal: goal,
-              onTap: () => widget.onGoalSelect(goal),
-              onStatusChange: widget.onStatusChange != null
-                  ? (value) => widget.onStatusChange!(goal, value)
-                  : null,
+            child: Container(
+              decoration: BoxDecoration(
+                boxShadow: [
+                  if (widget.currentGoalId != null && goal.id == widget.currentGoalId)
+                    BoxShadow(
+                      color: Colors.blue.withOpacity(0.15),
+                      blurRadius: 8,
+                      spreadRadius: 1,
+                    ),
+                ],
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: GoalCard(
+                goal: goal,
+                onTap: () => widget.onGoalSelect(goal),
+                onStatusChange: widget.onStatusChange != null
+                    ? (value) => widget.onStatusChange!(goal, value)
+                    : null,
+              ),
             ),
           ),
         ),

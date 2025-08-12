@@ -23,7 +23,31 @@ class BlocFeatureToggles {
   bool _imageUpdating = false;
   bool _dateUpdating = false;
   bool _countdownToggling = false;
-  
+  // AppBar 是否采用 BLoC 驱动渲染（阶段1小步开关，默认关闭）
+  bool _appBarBlocDriven = false;
+  // 显示选项菜单是否采用 BLoC 驱动渲染（阶段1小步开关，默认关闭）
+  bool _displayOptionsBlocDriven = false;
+  // 全屏视图是否采用 BLoC 驱动渲染（阶段1小步开关，默认关闭）
+  bool _fullScreenBlocDriven = false;
+  // 写路径是否通过BLoC直接执行（默认关闭，阶段0用于防止双写）
+  bool _writeThroughBloc = false;
+  // 标题显示切换是否通过BLoC写路径（批次1灰度开关，默认关闭）
+  bool _titleDisplayWriteThrough = false;
+  // 描述显示切换是否通过BLoC写路径（批次1灰度开关，默认关闭）
+  bool _descriptionDisplayWriteThrough = false;
+  // 时间显示切换是否通过BLoC写路径（批次1灰度开关，默认关闭）
+  bool _timeDisplayWriteThrough = false;
+  // 视图模式切换是否通过BLoC写路径（批次1灰度开关，默认关闭）
+  bool _viewModeWriteThrough = false;
+
+  // 批次2：编辑状态BLoC化开关
+  // 目标选择状态是否通过BLoC写路径（批次2灰度开关，默认关闭）
+  bool _currentGoalSelectionWriteThrough = false;
+  // 标题编辑状态是否通过BLoC写路径（批次2灰度开关，默认关闭）
+  bool _titleEditingWriteThrough = false;
+  // 描述编辑状态是否通过BLoC写路径（批次2灰度开关，默认关闭）
+  bool _descriptionEditingWriteThrough = false;
+
   // Getters
   bool get titleEditing => _titleEditing;
   bool get descriptionEditing => _descriptionEditing;
@@ -34,7 +58,20 @@ class BlocFeatureToggles {
   bool get imageUpdating => _imageUpdating;
   bool get dateUpdating => _dateUpdating;
   bool get countdownToggling => _countdownToggling;
-  
+  bool get appBarBlocDriven => _appBarBlocDriven;
+  bool get displayOptionsBlocDriven => _displayOptionsBlocDriven;
+  bool get fullScreenBlocDriven => _fullScreenBlocDriven;
+  bool get writeThroughBloc => _writeThroughBloc;
+  bool get titleDisplayWriteThrough => _titleDisplayWriteThrough;
+  bool get descriptionDisplayWriteThrough => _descriptionDisplayWriteThrough;
+  bool get timeDisplayWriteThrough => _timeDisplayWriteThrough;
+  bool get viewModeWriteThrough => _viewModeWriteThrough;
+
+  // 批次2：编辑状态BLoC化 getters
+  bool get currentGoalSelectionWriteThrough => _currentGoalSelectionWriteThrough;
+  bool get titleEditingWriteThrough => _titleEditingWriteThrough;
+  bool get descriptionEditingWriteThrough => _descriptionEditingWriteThrough;
+
   // 检查特定功能是否启用BLoC模式
   bool isFeatureEnabled(String featureName) {
     switch (featureName) {
@@ -47,6 +84,18 @@ class BlocFeatureToggles {
       case 'imageUpdating': return _imageUpdating;
       case 'dateUpdating': return _dateUpdating;
       case 'countdownToggling': return _countdownToggling;
+      case 'appBarBlocDriven': return _appBarBlocDriven;
+      case 'displayOptionsBlocDriven': return _displayOptionsBlocDriven;
+      case 'fullScreenBlocDriven': return _fullScreenBlocDriven;
+      case 'writeThroughBloc': return _writeThroughBloc;
+      case 'titleDisplayWriteThrough': return _titleDisplayWriteThrough;
+      case 'descriptionDisplayWriteThrough': return _descriptionDisplayWriteThrough;
+      case 'timeDisplayWriteThrough': return _timeDisplayWriteThrough;
+      case 'viewModeWriteThrough': return _viewModeWriteThrough;
+      // 批次2：编辑状态BLoC化
+      case 'currentGoalSelectionWriteThrough': return _currentGoalSelectionWriteThrough;
+      case 'titleEditingWriteThrough': return _titleEditingWriteThrough;
+      case 'descriptionEditingWriteThrough': return _descriptionEditingWriteThrough;
       default: return false;
     }
   }
@@ -54,7 +103,7 @@ class BlocFeatureToggles {
   // 设置特定功能的BLoC模式状态
   Future<void> setFeatureEnabled(String featureName, bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
-    
+
     switch (featureName) {
       case 'titleEditing':
         _titleEditing = enabled;
@@ -92,6 +141,51 @@ class BlocFeatureToggles {
         _countdownToggling = enabled;
         await prefs.setBool('bloc_feature_countdownToggling', enabled);
         break;
+      case 'appBarBlocDriven':
+        _appBarBlocDriven = enabled;
+        await prefs.setBool('bloc_feature_appBarBlocDriven', enabled);
+        break;
+      case 'displayOptionsBlocDriven':
+        _displayOptionsBlocDriven = enabled;
+        await prefs.setBool('bloc_feature_displayOptionsBlocDriven', enabled);
+        break;
+      case 'fullScreenBlocDriven':
+        _fullScreenBlocDriven = enabled;
+        await prefs.setBool('bloc_feature_fullScreenBlocDriven', enabled);
+        break;
+      case 'writeThroughBloc':
+        _writeThroughBloc = enabled;
+        await prefs.setBool('bloc_feature_writeThroughBloc', enabled);
+        break;
+      case 'titleDisplayWriteThrough':
+        _titleDisplayWriteThrough = enabled;
+        await prefs.setBool('bloc_feature_titleDisplayWriteThrough', enabled);
+        break;
+      case 'descriptionDisplayWriteThrough':
+        _descriptionDisplayWriteThrough = enabled;
+        await prefs.setBool('bloc_feature_descriptionDisplayWriteThrough', enabled);
+        break;
+      case 'timeDisplayWriteThrough':
+        _timeDisplayWriteThrough = enabled;
+        await prefs.setBool('bloc_feature_timeDisplayWriteThrough', enabled);
+        break;
+      case 'viewModeWriteThrough':
+        _viewModeWriteThrough = enabled;
+        await prefs.setBool('bloc_feature_viewModeWriteThrough', enabled);
+        break;
+      // 批次2：编辑状态BLoC化
+      case 'currentGoalSelectionWriteThrough':
+        _currentGoalSelectionWriteThrough = enabled;
+        await prefs.setBool('bloc_feature_currentGoalSelectionWriteThrough', enabled);
+        break;
+      case 'titleEditingWriteThrough':
+        _titleEditingWriteThrough = enabled;
+        await prefs.setBool('bloc_feature_titleEditingWriteThrough', enabled);
+        break;
+      case 'descriptionEditingWriteThrough':
+        _descriptionEditingWriteThrough = enabled;
+        await prefs.setBool('bloc_feature_descriptionEditingWriteThrough', enabled);
+        break;
     }
   }
   
@@ -124,7 +218,7 @@ class BlocFeatureToggles {
   // 加载保存的设置
   Future<void> loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    
+
     _titleEditing = prefs.getBool('bloc_feature_titleEditing') ?? false;
     _descriptionEditing = prefs.getBool('bloc_feature_descriptionEditing') ?? false;
     _statusChanging = prefs.getBool('bloc_feature_statusChanging') ?? false;
@@ -134,5 +228,18 @@ class BlocFeatureToggles {
     _imageUpdating = prefs.getBool('bloc_feature_imageUpdating') ?? false;
     _dateUpdating = prefs.getBool('bloc_feature_dateUpdating') ?? false;
     _countdownToggling = prefs.getBool('bloc_feature_countdownToggling') ?? false;
+    _appBarBlocDriven = prefs.getBool('bloc_feature_appBarBlocDriven') ?? false;
+    _displayOptionsBlocDriven = prefs.getBool('bloc_feature_displayOptionsBlocDriven') ?? false;
+    _fullScreenBlocDriven = prefs.getBool('bloc_feature_fullScreenBlocDriven') ?? false;
+    _writeThroughBloc = prefs.getBool('bloc_feature_writeThroughBloc') ?? false;
+    _titleDisplayWriteThrough = prefs.getBool('bloc_feature_titleDisplayWriteThrough') ?? false;
+    _descriptionDisplayWriteThrough = prefs.getBool('bloc_feature_descriptionDisplayWriteThrough') ?? false;
+    _timeDisplayWriteThrough = prefs.getBool('bloc_feature_timeDisplayWriteThrough') ?? false;
+    _viewModeWriteThrough = prefs.getBool('bloc_feature_viewModeWriteThrough') ?? false;
+
+    // 批次2：编辑状态BLoC化
+    _currentGoalSelectionWriteThrough = prefs.getBool('bloc_feature_currentGoalSelectionWriteThrough') ?? false;
+    _titleEditingWriteThrough = prefs.getBool('bloc_feature_titleEditingWriteThrough') ?? false;
+    _descriptionEditingWriteThrough = prefs.getBool('bloc_feature_descriptionEditingWriteThrough') ?? false;
   }
-} 
+}

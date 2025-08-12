@@ -4,6 +4,10 @@ import '../models/goal.dart';
 import 'package:intl/intl.dart';
 import 'package:video_player/video_player.dart';
 import 'package:path/path.dart' as path;
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../bloc/goal/goal_bloc.dart';
+import '../bloc/goal/goal_state.dart';
+import '../bloc/component/component_communication_bloc.dart';
 
 class FullScreenView extends StatefulWidget {
   final Goal? currentGoal;
@@ -14,6 +18,10 @@ class FullScreenView extends StatefulWidget {
   final VoidCallback onTitleSave;
   final VoidCallback onDescriptionEdit;
   final Function(Goal, String)? onSaveDescription;
+  // 批次2重构：添加描述编辑参数，与标题编辑保持一致
+  final bool isEditingDescription;
+  final TextEditingController descriptionController;
+  final VoidCallback onDescriptionSave;
   final VoidCallback onImagePick;
   final Function(Goal) onGoalSelect;
   final Function(Goal, bool)? onStatusChange;
@@ -25,8 +33,7 @@ class FullScreenView extends StatefulWidget {
   final VoidCallback onToggleTitle;
   final Function(Goal)? onToggleDeadline;
   final VoidCallback onAddSubGoal;
-  final Function(Goal, int?)? onSetCustomCountdown;
-  final bool hasCustomCountdown;
+  // 倒计时功能已移除，等架构稳定后重新实现
 
   const FullScreenView({
     super.key,
@@ -38,6 +45,10 @@ class FullScreenView extends StatefulWidget {
     required this.onTitleSave,
     required this.onDescriptionEdit,
     this.onSaveDescription,
+    // 批次2重构：新增描述编辑参数
+    required this.isEditingDescription,
+    required this.descriptionController,
+    required this.onDescriptionSave,
     required this.onImagePick,
     required this.onGoalSelect,
     required this.onAddGoal,
@@ -49,8 +60,7 @@ class FullScreenView extends StatefulWidget {
     required this.onToggleTitle,
     this.onToggleDeadline,
     required this.onAddSubGoal,
-    this.onSetCustomCountdown,
-    this.hasCustomCountdown = false,
+    // 倒计时功能已移除
   });
 
   @override
@@ -78,8 +88,9 @@ class _FullScreenViewState extends State<FullScreenView>
 
   // 添加描述显示和编辑状态变量
   bool _isDescriptionVisible = false;
-  bool _isEditingDescription = false;
-  final TextEditingController _descriptionController = TextEditingController();
+  // 批次2重构：移除内部描述编辑状态，改用props管理
+  // bool _isEditingDescription = false;  // 已移除，使用widget.isEditingDescription
+  // final TextEditingController _descriptionController = TextEditingController();  // 已移除，使用widget.descriptionController
 
   // 倒计时显示状态
   bool _showCountdown = false;
@@ -159,7 +170,8 @@ class _FullScreenViewState extends State<FullScreenView>
     _pageController.dispose();
     _thumbnailScrollController.dispose();
     _animationController.dispose();
-    _descriptionController.dispose();
+    // 批次2重构：描述控制器由GoalPage管理，无需在此dispose
+    // _descriptionController.dispose();
     _disposeVideoController();
     super.dispose();
   }
@@ -446,54 +458,7 @@ class _FullScreenViewState extends State<FullScreenView>
     }
   }
 
-  // 设置自定义倒计时
-  void _showCustomCountdownDialog() async {
-    if (widget.currentGoal == null || widget.onSetCustomCountdown == null)
-      return;
-
-    final initialDays = widget.currentGoal!.customCountdownDays ?? 30;
-    int selectedDays = initialDays;
-
-    final result = await showDialog<int>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('设置倒计时天数'),
-        content: StatefulBuilder(builder: (context, setState) {
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('选择倒计时天数: $selectedDays'),
-              Slider(
-                min: 1,
-                max: 365,
-                divisions: 364,
-                value: selectedDays.toDouble(),
-                onChanged: (value) {
-                  setState(() {
-                    selectedDays = value.round();
-                  });
-                },
-              ),
-            ],
-          );
-        }),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, selectedDays),
-            child: Text('确定'),
-          ),
-        ],
-      ),
-    );
-
-    if (result != null && widget.currentGoal != null) {
-      widget.onSetCustomCountdown!(widget.currentGoal!, result);
-    }
-  }
+  // 倒计时功能已移除，等架构稳定后重新实现
 
   // 切换截止日期
   void _toggleDeadline() {
@@ -592,23 +557,38 @@ class _FullScreenViewState extends State<FullScreenView>
     }
 
     final isKeyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
-    final isEditing = widget.isEditingTitle || _isEditingDescription;
+    final isEditing = widget.isEditingTitle || widget.isEditingDescription;
 
-    return Stack(
-      children: [
-        Scaffold(
-          resizeToAvoidBottomInset: false,
-          backgroundColor: Colors.transparent,
-          body: _buildContent(context),
-        ),
-        if (!(isKeyboardOpen && isEditing))
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 40,
-            child: _buildBottomIndicatorsContentOnly(),
+    // 批次2修复：添加BLoC监听，确保描述更新后UI立即刷新
+    return BlocListener<GoalBloc, GoalState>(
+      listener: (context, state) {
+        if (state is GoalsLoaded && state.currentGoal != null) {
+          // 强制更新描述控制器和UI
+          final currentGoal = state.currentGoal!;
+          if (currentGoal.id == widget.currentGoal?.id) {
+            setState(() {
+              widget.descriptionController.text = currentGoal.description;
+            });
+            print('【FullScreenView监听】描述已更新: ${currentGoal.description}');
+          }
+        }
+      },
+      child: Stack(
+        children: [
+          Scaffold(
+            resizeToAvoidBottomInset: false,
+            backgroundColor: Colors.transparent,
+            body: _buildContent(context),
           ),
-      ],
+          if (!(isKeyboardOpen && isEditing))
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 40,
+              child: _buildBottomIndicatorsContentOnly(),
+            ),
+        ],
+      ),
     );
   }
 
@@ -818,7 +798,7 @@ class _FullScreenViewState extends State<FullScreenView>
   Widget _buildCenterContent(Goal goal) {
     // 当前目标变化时更新描述控制器内容
     if (goal.id == widget.currentGoal?.id) {
-      _descriptionController.text = goal.description ?? '';
+      widget.descriptionController.text = goal.description;
     }
 
     return Builder(
@@ -1085,21 +1065,23 @@ class _FullScreenViewState extends State<FullScreenView>
 
   // 构建描述编辑器
   Widget _buildDescriptionEditor(Goal goal) {
-    // 确保描述控制器始终有最新内容
-    if (_descriptionController.text != goal.description) {
-      _descriptionController.text = goal.description ?? '';
+    // 批次2修复：强制同步描述内容，确保UI显示最新数据
+    final currentDescription = goal.description;
+    if (widget.descriptionController.text != currentDescription) {
+      widget.descriptionController.text = currentDescription;
+      print('【FullScreenView修复】描述控制器已更新: ${currentDescription}');
     }
 
     return Container(
       width: MediaQuery.of(context).size.width * 0.85,
-      child: _isEditingDescription
+      child: widget.isEditingDescription
           // 编辑模式
           ? Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(
                   child: TextField(
-                    controller: _descriptionController,
+                    controller: widget.descriptionController,
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 16,
@@ -1122,18 +1104,9 @@ class _FullScreenViewState extends State<FullScreenView>
                 IconButton(
                   icon: const Icon(Icons.check, color: Colors.white),
                   onPressed: () {
-                    if (widget.currentGoal != null &&
-                        widget.onSaveDescription != null) {
-                      // 使用回调保存描述
-                      widget.onSaveDescription!(
-                        widget.currentGoal!,
-                        _descriptionController.text,
-                      );
-                      // 退出编辑模式
-                      setState(() {
-                        _isEditingDescription = false;
-                      });
-                    }
+                    // 批次2重构：使用统一的BLoC事件处理，与标题编辑保持一致
+                    widget.onDescriptionSave();
+                    print('【FullScreenView重构】描述保存: ${widget.descriptionController.text}');
                   },
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
@@ -1143,22 +1116,33 @@ class _FullScreenViewState extends State<FullScreenView>
           // 显示模式 - 居中并移除关闭按钮
           : GestureDetector(
               onTap: () {
-                // 点击开始编辑
-                setState(() {
-                  _isEditingDescription = true;
-                });
+                // 批次2重构：使用统一的BLoC事件处理，与标题编辑保持一致
+                widget.onDescriptionEdit();
+                print('【FullScreenView重构】开始描述编辑');
               },
-              child: Text(
-                _descriptionController.text.isEmpty
-                    ? '点击添加描述...'
-                    : _descriptionController.text,
-                style: TextStyle(
-                  color: _descriptionController.text.isEmpty
-                      ? Colors.white70
-                      : Colors.white,
-                  fontSize: 16,
-                ),
-                textAlign: TextAlign.center,
+              child: BlocBuilder<GoalBloc, GoalState>(
+                builder: (context, state) {
+                  // 批次2修复：直接从BLoC状态读取描述，确保显示最新数据
+                  String displayDescription = '';
+                  if (state is GoalsLoaded && state.currentGoal?.id == goal.id) {
+                    displayDescription = state.currentGoal!.description;
+                  } else {
+                    displayDescription = goal.description;
+                  }
+
+                  return Text(
+                    displayDescription.isEmpty
+                        ? '点击添加描述...'
+                        : displayDescription,
+                    style: TextStyle(
+                      color: displayDescription.isEmpty
+                          ? Colors.white70
+                          : Colors.white,
+                      fontSize: 16,
+                    ),
+                    textAlign: TextAlign.center,
+                  );
+                },
               ),
             ),
     );

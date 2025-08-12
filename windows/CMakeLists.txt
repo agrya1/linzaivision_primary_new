@@ -2,6 +2,12 @@
 cmake_minimum_required(VERSION 3.14)
 project(linzaivision_primary_new LANGUAGES CXX)
 
+# Fix encoding issues for Windows
+if(WIN32)
+  add_compile_options(/utf-8)
+  add_compile_definitions(UNICODE _UNICODE)
+endif()
+
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
 set(BINARY_NAME "linzaivision_primary_new")

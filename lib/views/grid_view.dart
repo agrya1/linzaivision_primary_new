@@ -8,6 +8,7 @@ class GoalGridView extends StatelessWidget {
   final Function(Goal) onGoalSelect;
   final VoidCallback onAddGoal;
   final Function(BuildContext, Goal)? onShowOperationMenu;
+  final int? currentGoalId; // 可选高亮支持
 
   const GoalGridView({
     super.key,
@@ -15,6 +16,7 @@ class GoalGridView extends StatelessWidget {
     required this.onGoalSelect,
     required this.onAddGoal,
     this.onShowOperationMenu,
+    this.currentGoalId,
   });
 
   @override
@@ -69,19 +71,33 @@ class GoalGridView extends StatelessWidget {
   }
 
   Widget _buildGoalCard(BuildContext context, Goal goal) {
+    final bool isSelected = currentGoalId != null && goal.id == currentGoalId;
     return GestureDetector(
       onTap: () => onGoalSelect(goal),
-      child: Card(
-        shape: RoundedRectangleBorder(
+      child: Container(
+        decoration: BoxDecoration(
+          boxShadow: [
+            if (isSelected)
+              BoxShadow(
+                color: Colors.blue.withOpacity(0.15),
+                blurRadius: 8,
+                spreadRadius: 1,
+              ),
+          ],
           borderRadius: BorderRadius.circular(20),
         ),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            _buildCardImage(goal),
-            _buildCardOverlay(),
-            _buildCardContent(context, goal),
-          ],
+        child: Card(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _buildCardImage(goal),
+              _buildCardOverlay(),
+              _buildCardContent(context, goal),
+            ],
+          ),
         ),
       ),
     );

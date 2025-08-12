@@ -9,4 +9,8 @@ class WebStorage {
   static String? getData(String key) {
     return window.localStorage[key];
   }
+
+  static void removeItem(String key) {
+    window.localStorage.remove(key);
+  }
 }

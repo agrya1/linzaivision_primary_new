@@ -9,7 +9,6 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  image_picker: ^1.1.2
   provider: ^6.1.1
   screenshot: ^3.0.0
   path_provider: ^2.1.2
@@ -37,6 +36,10 @@ dependencies:
   flutter_bloc: ^8.1.6
   equatable: ^2.0.5
   flutter_secure_storage: ^4.2.1
+  rxdart: ^0.27.7
+
+  # 网络请求
+  http: ^1.1.0
 
   # 应用信息
   package_info_plus: ^8.0.0

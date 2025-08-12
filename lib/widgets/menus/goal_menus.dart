@@ -17,11 +17,7 @@ class GoalOperationMenu extends StatelessWidget {
   /// 分享目标的回调函数
   final VoidCallback onShare;
 
-  /// 切换倒计时显示状态的回调函数
-  final VoidCallback onToggleCountdown;
-
-  /// 当前倒计时的显示状态
-  final bool showCountdown;
+  // 倒计时功能已移除，等架构稳定后重新实现
 
   /// 切换时间显示状态的回调函数
   final VoidCallback onToggleTime;
@@ -50,11 +46,7 @@ class GoalOperationMenu extends StatelessWidget {
   /// 查看子目标的回调函数
   final VoidCallback onViewSubGoals;
 
-  /// 设置自定义倒计时的回调函数
-  final VoidCallback onToggleCustomCountdown;
-
-  /// 当前是否有自定义倒计时
-  final bool hasCustomCountdown;
+  // 倒计时功能已移除，等架构稳定后重新实现
 
   /// 切换视频声音的回调函数
   final VoidCallback? onToggleVideoSound;
@@ -76,8 +68,7 @@ class GoalOperationMenu extends StatelessWidget {
     required this.onStatusChange,
     required this.onDelete,
     required this.onShare,
-    required this.onToggleCountdown,
-    required this.showCountdown,
+    // 倒计时功能已移除
     required this.onToggleTime,
     required this.showTime,
     required this.onToggleDescription,
@@ -86,8 +77,7 @@ class GoalOperationMenu extends StatelessWidget {
     required this.showTitle,
     required this.onToggleDeadline,
     required this.onAddSubGoal,
-    required this.onToggleCustomCountdown,
-    required this.hasCustomCountdown,
+    // 倒计时功能已移除
     required this.onViewSubGoals,
     this.onToggleVideoSound,
     this.isMuted = false,
@@ -179,24 +169,7 @@ class GoalOperationMenu extends StatelessWidget {
             },
           ),
         ),
-        // 倒计时显示选项
-        PopupMenuItem<String>(
-          value: 'countdown',
-          child: GoalOperationMenuItem(
-            icon: showCountdown ? Icons.timer_off : Icons.timer,
-            text: currentGoal?.targetDate != null
-                ? (showCountdown ? '隐藏倒计时' : '显示倒计时')
-                : (hasCustomCountdown ? '关闭倒计时' : '设置倒计时'),
-            onTap: () {
-              Navigator.pop(context);
-              if (currentGoal?.targetDate != null) {
-                onToggleCountdown();
-              } else {
-                onToggleCustomCountdown();
-              }
-            },
-          ),
-        ),
+        // 倒计时功能已移除，等架构稳定后重新实现
         // 时间显示选项（仅当有截止日期时显示）
         if (currentGoal?.targetDate != null)
           PopupMenuItem<String>(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:provider/provider.dart';
 import 'database/database_init.dart';
@@ -28,6 +29,7 @@ import 'bloc/auth/auth_event.dart';
 import 'bloc/settings/settings_bloc.dart';
 import 'bloc/profile/profile_bloc.dart';
 import 'bloc/profile/profile_event.dart';
+import 'bloc/component/component_communication_bloc.dart';
 import 'routes/app_routes.dart';
 import 'routes/app_router.dart';
 import 'routes/route_observer.dart';
@@ -40,10 +42,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../bloc/use_card/use_card_bloc.dart';
 
 Future<void> main() async {
-  // 确保 Flutter 绑定初始化
+  // Ensure Flutter binding initialization
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 初始化数据库（仅在非 Web 平台）
+  // Fix Windows platform EGL errors: Disable hardware acceleration
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+    // Set software rendering mode
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  }
+
+  // Initialize database (non-Web platforms only)
   if (!kIsWeb) {
     initializeDatabase();
   }
@@ -194,6 +202,13 @@ class MyApp extends StatelessWidget {
         BlocProvider<UseCardBloc>(
           create: (context) => UseCardBloc(
             goalRepository: context.read<GoalRepository>(),
+          ),
+        ),
+        // 提供ComponentCommunicationBloc - 组件间通信
+        BlocProvider<ComponentCommunicationBloc>(
+          create: (context) => ComponentCommunicationBloc(
+            databaseHelper: context.read<DatabaseHelper>(),
+            goalBloc: context.read<GoalBloc>(),
           ),
         ),
         // 提供AppBloc - 应用级状态管理
