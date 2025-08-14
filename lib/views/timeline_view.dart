@@ -474,13 +474,10 @@ class _TimelineViewState extends State<TimelineView> {
       // 实际更新目标日期
       if (widget.onUpdateGoalDate != null) {
         try {
-          // 在UI上临时更新目标日期，这样即使回调延迟也能立即看到变化
-          goal.targetDate = newDate;
+          // 批次3阶段4：移除对Goal实体的直接修改
+          // 不再直接修改goal.targetDate，改为仅发送BLoC事件
 
-          // 刷新UI立即显示变化
-          setState(() {});
-
-          // 调用父组件回调进行持久化存储
+          // 调用父组件回调进行持久化存储（父组件会发送BLoC事件）
           final success = await widget.onUpdateGoalDate!(goal, newDate);
 
           // 显示日期修改成功消息，并明确显示选择的日期
@@ -514,13 +511,10 @@ class _TimelineViewState extends State<TimelineView> {
       // 如果返回null，说明用户可能点击了清除日期按钮
       if (widget.onUpdateGoalDate != null) {
         try {
-          // 在UI上临时更新目标日期
-          goal.targetDate = null;
+          // 批次3阶段4：移除对Goal实体的直接修改
+          // 不再直接修改goal.targetDate，改为仅发送BLoC事件
 
-          // 刷新UI立即显示变化
-          setState(() {});
-
-          // 调用回调进行持久化
+          // 调用回调进行持久化（父组件会发送BLoC事件）
           final success = await widget.onUpdateGoalDate!(goal, null);
 
           ScaffoldMessenger.of(context).showSnackBar(

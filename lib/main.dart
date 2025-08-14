@@ -207,7 +207,6 @@ class MyApp extends StatelessWidget {
         // 提供ComponentCommunicationBloc - 组件间通信
         BlocProvider<ComponentCommunicationBloc>(
           create: (context) => ComponentCommunicationBloc(
-            databaseHelper: context.read<DatabaseHelper>(),
             goalBloc: context.read<GoalBloc>(),
           ),
         ),

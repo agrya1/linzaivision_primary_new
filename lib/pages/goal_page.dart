@@ -62,6 +62,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   List<Goal> allGoals = [];
   int currentView = 0; // 视图模式：0 - 全屏视图，1 - 时间轴视图，2 - 网格视图
   Goal? currentGoal;
+  // 批次3阶段4：UI状态管理清理 - 这些状态将逐步移除
   bool _isLoading = true;
   String? _error;
 
@@ -83,7 +84,7 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   DateTime? _lastCacheTime;
   static const Duration _cacheValidDuration = Duration(minutes: 5);
 
-  // 性能优化：批处理状态更新
+  // 批次3阶段4：待移除 - 性能优化：批处理状态更新
   Timer? _stateUpdateTimer;
   Map<String, dynamic> _pendingStateUpdates = {};
 
@@ -360,8 +361,35 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
     try {
       print('【GoalPage】开始清理数据库错误数据');
 
-      // 获取所有目标
-      final allTargets = await _dbHelper.getGoalTree();
+      // 批次3阶段3：数据加载统一通过BLoC
+      List<Goal> allTargets;
+      if (_featureToggles.dataLoadingViaBloc) {
+        // 新路径：通过BLoC事件加载数据
+        print('【GoalPage】使用BLoC方式获取目标树进行数据清理');
+        final completer = Completer<List<Goal>>();
+
+        // 监听BLoC状态变化
+        late final StreamSubscription<GoalState> subscription;
+        subscription = context.read<GoalBloc>().stream.listen((state) {
+          if (state is GoalsLoaded) {
+            completer.complete(state.allGoals);
+            subscription.cancel();
+          } else if (state is GoalError) {
+            completer.completeError(state.message);
+            subscription.cancel();
+          }
+        });
+
+        // 发送加载事件
+        context.read<GoalBloc>().add(const LoadGoals());
+
+        // 等待结果
+        allTargets = await completer.future;
+      } else {
+        // 传统路径：直接从数据库获取
+        print('【GoalPage】使用传统方式获取目标树进行数据清理');
+        allTargets = await _dbHelper.getGoalTree();
+      }
 
       // 查找孤儿目标（父ID指向不存在的目标）
       final orphanGoals = <Goal>[];
@@ -378,7 +406,19 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
       for (final orphan in orphanGoals) {
         print('【GoalPage】修复孤儿目标: ${orphan.title} (ID: ${orphan.id})');
         final fixedGoal = orphan.copyWith(parentId: null);
-        await _dbHelper.updateGoal(fixedGoal);
+
+        // 批次3阶段2：CRUD操作统一通过BLoC
+        if (_featureToggles.goalCRUDWriteThrough) {
+          // 新路径：直接使用BLoC事件，由BLoC处理数据库操作
+          context
+              .read<GoalBloc>()
+              .add(UpdateGoalWithValidation(fixedGoal, validateData: false));
+          print('【GoalPage】使用BLoC事件修复孤儿目标: ${fixedGoal.title}');
+        } else {
+          // 传统路径：直接更新数据库
+          await _dbHelper.updateGoal(fixedGoal);
+          print('【GoalPage】传统方式修复孤儿目标: ${fixedGoal.title}');
+        }
       }
 
       if (orphanGoals.isNotEmpty) {
@@ -514,11 +554,39 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
         _error = null;
       });
 
-      // 始终加载全量目标树
-      allGoals = await _dbHelper.getGoalTree();
+      // 批次3阶段3：数据加载统一通过BLoC
+      List<Goal> loadedGoals;
+      if (_featureToggles.dataLoadingViaBloc) {
+        // 新路径：通过BLoC事件加载数据
+        print('【GoalPage】使用BLoC方式加载目标数据');
+        final completer = Completer<GoalsLoaded>();
 
-      final loadedGoals =
-          await _dbHelper.getGoals(parentId: widget.parentGoal?.id);
+        // 监听BLoC状态变化
+        late final StreamSubscription<GoalState> subscription;
+        subscription = context.read<GoalBloc>().stream.listen((state) {
+          if (state is GoalsLoaded) {
+            completer.complete(state);
+            subscription.cancel();
+          } else if (state is GoalError) {
+            completer.completeError(state.message);
+            subscription.cancel();
+          }
+        });
+
+        // 发送加载事件
+        context.read<GoalBloc>().add(LoadGoals(parentId: widget.parentGoal?.id));
+
+        // 等待结果
+        final goalState = await completer.future;
+        allGoals = goalState.allGoals;
+        loadedGoals = goalState.goals;
+      } else {
+        // 传统路径：直接从数据库获取
+        print('【GoalPage】使用传统方式加载目标数据');
+        // 始终加载全量目标树
+        allGoals = await _dbHelper.getGoalTree();
+        loadedGoals = await _dbHelper.getGoals(parentId: widget.parentGoal?.id);
+      }
 
       // 如果是根页面(不是子目标页面)且数据库中没有数据，使用示例数据
       if (loadedGoals.isEmpty && widget.parentGoal == null) {
@@ -562,9 +630,35 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
         // 等待保存初始数据完成
         await _saveInitialGoals();
 
-        // 重新从数据库加载数据以确保数据完整
-        final reloadedGoals =
-            await _dbHelper.getGoals(parentId: widget.parentGoal?.id);
+        // 批次3阶段3：数据加载统一通过BLoC
+        List<Goal> reloadedGoals;
+        if (_featureToggles.dataLoadingViaBloc) {
+          // 新路径：通过BLoC事件重新加载数据
+          print('【GoalPage】使用BLoC方式重新加载数据以确保完整性');
+          final completer = Completer<List<Goal>>();
+
+          // 监听BLoC状态变化
+          late final StreamSubscription<GoalState> subscription;
+          subscription = context.read<GoalBloc>().stream.listen((state) {
+            if (state is GoalsLoaded) {
+              completer.complete(state.goals);
+              subscription.cancel();
+            } else if (state is GoalError) {
+              completer.completeError(state.message);
+              subscription.cancel();
+            }
+          });
+
+          // 发送加载事件
+          context.read<GoalBloc>().add(LoadGoals(parentId: widget.parentGoal?.id));
+
+          // 等待结果
+          reloadedGoals = await completer.future;
+        } else {
+          // 传统路径：重新从数据库加载数据以确保数据完整
+          print('【GoalPage】使用传统方式重新加载数据以确保完整性');
+          reloadedGoals = await _dbHelper.getGoals(parentId: widget.parentGoal?.id);
+        }
 
         // 先刷新目标树
         await _refreshGoalTree();
@@ -636,8 +730,37 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
     print('开始保存初始数据到数据库');
 
     try {
+      // 批次3阶段3：数据加载统一通过BLoC
+      List<Goal> existingAll;
+      if (_featureToggles.dataLoadingViaBloc) {
+        // 新路径：通过BLoC事件检查现有数据
+        print('【GoalPage】使用BLoC方式检查现有数据');
+        final completer = Completer<List<Goal>>();
+
+        // 监听BLoC状态变化
+        late final StreamSubscription<GoalState> subscription;
+        subscription = context.read<GoalBloc>().stream.listen((state) {
+          if (state is GoalsLoaded) {
+            completer.complete(state.allGoals);
+            subscription.cancel();
+          } else if (state is GoalError) {
+            completer.completeError(state.message);
+            subscription.cancel();
+          }
+        });
+
+        // 发送加载事件
+        context.read<GoalBloc>().add(const LoadGoals());
+
+        // 等待结果
+        existingAll = await completer.future;
+      } else {
+        // 传统路径：直接从数据库检查
+        print('【GoalPage】使用传统方式检查现有数据');
+        existingAll = await _dbHelper.getGoalTree();
+      }
+
       // 1) 幂等检查：数据库如已有数据则跳过种子写入
-      final existingAll = await _dbHelper.getGoalTree();
       if (existingAll.isNotEmpty) {
         print('跳过初始数据保存：数据库已有 ${existingAll.length} 条记录');
         return;
@@ -654,20 +777,27 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
         _resetIdsRecursively(g);
       }
 
-      // 3) 使用批量插入事务
-      await _dbHelper.batchInsertGoalTree(goals);
-      print('初始数据保存完成');
+      // 批次3阶段2：批量操作统一通过BLoC
+      if (_featureToggles.goalCRUDWriteThrough) {
+        // 新路径：直接使用BLoC事件，由BLoC处理数据库操作
+        context.read<GoalBloc>().add(SaveInitialGoals(goals));
+        print('【GoalPage】使用BLoC事件保存初始数据: ${goals.length}个目标');
+      } else {
+        // 传统路径：先保存到数据库，再通知影子模式
+        await _dbHelper.batchInsertGoalTree(goals);
+        print('【GoalPage】传统方式保存初始数据完成: ${goals.length}个目标');
 
-      // 4) 仅在实际写入后，通知影子模式适配器
-      _blocAdapter?.saveInitialGoals(
-        goals: goals,
-        onSuccess: () {
-          print('BLoC保存初始数据成功 - 影子模式');
-        },
-        onError: (error) {
-          print('BLoC保存初始数据失败 - 影子模式: $error');
-        },
-      );
+        // 4) 仅在实际写入后，通知影子模式适配器
+        _blocAdapter?.saveInitialGoals(
+          goals: goals,
+          onSuccess: () {
+            print('BLoC保存初始数据成功 - 影子模式');
+          },
+          onError: (error) {
+            print('BLoC保存初始数据失败 - 影子模式: $error');
+          },
+        );
+      }
     } catch (e) {
       final msg = e.toString();
       if (msg.contains('UNIQUE constraint failed: goals.id')) {
@@ -707,12 +837,41 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
           _isLoading = true;
         });
 
-        print('【GoalPage】使用传统方式刷新目标树');
-        final startTime = DateTime.now();
-        final freshGoals = await _dbHelper.getGoalTree();
-        final endTime = DateTime.now();
-        print(
-            '【GoalPage】传统方式加载完成，耗时: ${endTime.difference(startTime).inMilliseconds}ms，获取 ${freshGoals.length} 个目标');
+        // 批次3阶段3：数据加载统一通过BLoC
+        List<Goal> freshGoals;
+        if (_featureToggles.dataLoadingViaBloc) {
+          // 新路径：通过BLoC事件刷新目标树
+          print('【GoalPage】使用BLoC方式刷新目标树');
+          final startTime = DateTime.now();
+          final completer = Completer<List<Goal>>();
+
+          // 监听BLoC状态变化
+          late final StreamSubscription<GoalState> subscription;
+          subscription = context.read<GoalBloc>().stream.listen((state) {
+            if (state is GoalsLoaded) {
+              completer.complete(state.allGoals);
+              subscription.cancel();
+            } else if (state is GoalError) {
+              completer.completeError(state.message);
+              subscription.cancel();
+            }
+          });
+
+          // 发送刷新事件
+          context.read<GoalBloc>().add(RefreshGoalTree());
+
+          // 等待结果
+          freshGoals = await completer.future;
+          final endTime = DateTime.now();
+          print('【GoalPage】BLoC方式刷新完成，耗时: ${endTime.difference(startTime).inMilliseconds}ms，获取 ${freshGoals.length} 个目标');
+        } else {
+          // 传统路径：直接从数据库刷新
+          print('【GoalPage】使用传统方式刷新目标树');
+          final startTime = DateTime.now();
+          freshGoals = await _dbHelper.getGoalTree();
+          final endTime = DateTime.now();
+          print('【GoalPage】传统方式加载完成，耗时: ${endTime.difference(startTime).inMilliseconds}ms，获取 ${freshGoals.length} 个目标');
+        }
 
         // 性能优化：更新缓存
         _updateCache(freshGoals);
@@ -803,21 +962,30 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
         print('【GoalPage】创建子目标: 父ID=${goal.parentId}, 标题=${goal.title}');
       }
 
-      // 保存到数据库
-      final id = await _dbHelper.insertGoal(goal);
-      goal.id = id;
-      print('【GoalPage】子目标创建成功: ID=$id, 父ID=${goal.parentId}');
-
-      // 第二阶段迁移完成：统一使用BLoC事件新增目标
-      if (_featureToggles.writeThroughBloc) {
+      // 批次3阶段2：CRUD操作统一通过BLoC
+      if (_featureToggles.goalCRUDWriteThrough) {
+        // 新路径：直接使用BLoC事件，由BLoC处理数据库操作
         context
             .read<GoalBloc>()
             .add(AddGoalWithDetails(goal, setAsCurrent: true, insertIndex: 0));
+        print('【GoalPage】使用BLoC事件创建目标: 标题=${goal.title}, 父ID=${goal.parentId}');
       } else {
-        // 阶段0：避免双写，使用只读同步刷新BLoC状态
-        context.read<GoalBloc>().add(const LoadGoals());
-        context.read<GoalBloc>().add(RefreshGoalTree());
-        context.read<GoalBloc>().add(SelectGoal(goal));
+        // 传统路径：先保存到数据库，再同步BLoC状态
+        final id = await _dbHelper.insertGoal(goal);
+        goal.id = id;
+        print('【GoalPage】传统方式创建目标成功: ID=$id, 父ID=${goal.parentId}');
+
+        // 第二阶段迁移完成：统一使用BLoC事件新增目标
+        if (_featureToggles.writeThroughBloc) {
+          context
+              .read<GoalBloc>()
+              .add(AddGoalWithDetails(goal, setAsCurrent: true, insertIndex: 0));
+        } else {
+          // 阶段0：避免双写，使用只读同步刷新BLoC状态
+          context.read<GoalBloc>().add(const LoadGoals());
+          context.read<GoalBloc>().add(RefreshGoalTree());
+          context.read<GoalBloc>().add(SelectGoal(goal));
+        }
       }
 
       // 重要：刷新目标树，确保子目标显示在树中
@@ -877,20 +1045,30 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
         }
       }
 
-      // 更新数据库
-      await _dbHelper.updateGoal(goal);
-
-      // 阶段0：避免双写，根据开关决定是否通过BLoC写
-      if (_featureToggles.writeThroughBloc) {
+      // 批次3阶段2：CRUD操作统一通过BLoC
+      if (_featureToggles.goalCRUDWriteThrough) {
+        // 新路径：直接使用BLoC事件，由BLoC处理数据库操作
         context
             .read<GoalBloc>()
             .add(UpdateGoalWithValidation(goal, validateData: false));
+        print('【GoalPage】使用BLoC事件更新目标: ID=${goal.id}, 标题=${goal.title}');
       } else {
-        context.read<GoalBloc>().add(const LoadGoals());
-        context.read<GoalBloc>().add(RefreshGoalTree());
-        // 如当前选中目标为此目标，确保选择保持
-        if (currentGoal?.id == goal.id) {
-          context.read<GoalBloc>().add(SelectGoal(goal));
+        // 传统路径：先更新数据库，再同步BLoC状态
+        await _dbHelper.updateGoal(goal);
+        print('【GoalPage】传统方式更新目标成功: ID=${goal.id}, 标题=${goal.title}');
+
+        // 阶段0：避免双写，根据开关决定是否通过BLoC写
+        if (_featureToggles.writeThroughBloc) {
+          context
+              .read<GoalBloc>()
+              .add(UpdateGoalWithValidation(goal, validateData: false));
+        } else {
+          context.read<GoalBloc>().add(const LoadGoals());
+          context.read<GoalBloc>().add(RefreshGoalTree());
+          // 如当前选中目标为此目标，确保选择保持
+          if (currentGoal?.id == goal.id) {
+            context.read<GoalBloc>().add(SelectGoal(goal));
+          }
         }
       }
 
@@ -920,21 +1098,31 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
   /// 删除目标
   Future<void> _deleteGoal(Goal goal) async {
     try {
-      // 从数据库中删除
-      await _dbHelper.deleteGoal(goal.id!);
-
-      // 第二阶段迁移完成：统一使用BLoC事件删除目标
-      if (_featureToggles.writeThroughBloc) {
+      // 批次3阶段2：CRUD操作统一通过BLoC
+      if (_featureToggles.goalCRUDWriteThrough) {
+        // 新路径：直接使用BLoC事件，由BLoC处理数据库操作
         context
             .read<GoalBloc>()
             .add(DeleteGoalWithCleanup(goal, updateCurrent: true));
+        print('【GoalPage】使用BLoC事件删除目标: ID=${goal.id}, 标题=${goal.title}');
       } else {
-        // 阶段0：避免双写，先删DB，再同步BLoC
-        context.read<GoalBloc>().add(const LoadGoals());
-        context.read<GoalBloc>().add(RefreshGoalTree());
-        // 重新选择当前目标
-        if (goals.isNotEmpty) {
-          context.read<GoalBloc>().add(SelectGoal(goals.first));
+        // 传统路径：先删除数据库，再同步BLoC状态
+        await _dbHelper.deleteGoal(goal.id!);
+        print('【GoalPage】传统方式删除目标成功: ID=${goal.id}, 标题=${goal.title}');
+
+        // 第二阶段迁移完成：统一使用BLoC事件删除目标
+        if (_featureToggles.writeThroughBloc) {
+          context
+              .read<GoalBloc>()
+              .add(DeleteGoalWithCleanup(goal, updateCurrent: true));
+        } else {
+          // 阶段0：避免双写，先删DB，再同步BLoC
+          context.read<GoalBloc>().add(const LoadGoals());
+          context.read<GoalBloc>().add(RefreshGoalTree());
+          // 重新选择当前目标
+          if (goals.isNotEmpty) {
+            context.read<GoalBloc>().add(SelectGoal(goals.first));
+          }
         }
       }
 
@@ -992,12 +1180,142 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
 
   @override
   Widget build(BuildContext context) {
-    // 简化架构：统一使用混合模式（传统状态 + BLoC监听）
-    // 移除复杂的开关判断，确保UI始终响应
-    return _buildWithBlocListener(context);
+    // 批次3阶段4：UI状态管理清理
+    if (_featureToggles.uiStateWriteThrough) {
+      // 新路径：完全基于BLoC状态的UI
+      return _buildWithBlocBuilder(context);
+    } else {
+      // 传统路径：混合模式（传统状态 + BLoC监听）
+      return _buildWithBlocListener(context);
+    }
   }
 
-  // 已移除：未使用的BlocBuilder方法已清理
+  /// 批次3阶段4：基于BLoC状态的UI构建
+  Widget _buildWithBlocBuilder(BuildContext context) {
+    return BlocBuilder<GoalBloc, GoalState>(
+      buildWhen: (previous, current) {
+        // 优化重建性能：只在关键状态变化时重建
+        if (current is GoalLoading) return true;
+        if (current is GoalError) return true;
+        if (current is GoalsLoaded) {
+          if (previous is! GoalsLoaded) return true;
+          // 检查关键数据是否变化
+          return current.goals != previous.goals ||
+                 current.allGoals != previous.allGoals ||
+                 current.currentGoal != previous.currentGoal ||
+                 current.viewMode != previous.viewMode;
+        }
+        return false;
+      },
+      builder: (context, state) {
+        if (state is GoalLoading) {
+          return _buildLoadingView();
+        } else if (state is GoalError) {
+          return _buildErrorView(state.message);
+        } else if (state is GoalsLoaded) {
+          return _buildMainUI(state);
+        } else {
+          return _buildLoadingView();
+        }
+      },
+    );
+  }
+
+  /// 基于BLoC状态构建主UI
+  Widget _buildMainUI(GoalsLoaded state) {
+    // 使用BLoC状态而不是本地状态
+    final goals = state.goals;
+    final allGoals = state.allGoals;
+    final currentGoal = state.currentGoal;
+    final currentView = state.viewMode;
+
+    return MultiBlocListener(
+      listeners: [
+        BlocListener<ComponentCommunicationBloc, ComponentCommunicationState>(
+          listener: (context, state) {
+            _handleComponentCommunication(state);
+          },
+        ),
+      ],
+      child: _buildScaffoldWithState(goals, allGoals, currentGoal, currentView),
+    );
+  }
+
+  /// 基于传入状态构建Scaffold（用于BlocBuilder）
+  Widget _buildScaffoldWithState(List<Goal> goals, List<Goal> allGoals, Goal? currentGoal, int currentView) {
+    return Scaffold(
+      extendBodyBehindAppBar: currentView == 0,
+      appBar: _buildAppBarForBlocBuilder(currentView),
+      drawer: _buildDrawer(),
+      body: Stack(
+        children: [
+          _buildBodyForBlocBuilder(goals, allGoals, currentGoal, currentView),
+          if (currentView == 0 && currentGoal != null)
+            _buildFloatingActionButtonForBlocBuilder(currentGoal),
+        ],
+      ),
+    );
+  }
+
+  /// 为BlocBuilder构建AppBar
+  AppBar _buildAppBarForBlocBuilder(int currentView) {
+    return AppBar(
+      title: Text(widget.parentGoal?.title ?? '临在意识'),
+      backgroundColor: currentView == 0 ? Colors.transparent : Colors.white,
+      elevation: 0,
+      iconTheme: IconThemeData(
+        color: currentView == 0 ? Colors.white : Colors.black,
+      ),
+      titleTextStyle: TextStyle(
+        color: currentView == 0 ? Colors.white : Colors.black,
+        fontSize: 20,
+        fontWeight: FontWeight.bold,
+      ),
+    );
+  }
+
+  /// 为BlocBuilder构建Body
+  Widget _buildBodyForBlocBuilder(List<Goal> goals, List<Goal> allGoals, Goal? currentGoal, int currentView) {
+    // 简化版本：基于传入的状态参数构建UI
+    switch (currentView) {
+      case 0:
+        return _buildFullScreenViewForBlocBuilder(currentGoal);
+      case 1:
+        return _buildTimelineViewForBlocBuilder(goals, currentGoal);
+      case 2:
+        return _buildGridViewForBlocBuilder(goals);
+      default:
+        return _buildFullScreenViewForBlocBuilder(currentGoal);
+    }
+  }
+
+  /// 为BlocBuilder构建全屏视图
+  Widget _buildFullScreenViewForBlocBuilder(Goal? currentGoal) {
+    if (currentGoal == null) {
+      return const Center(child: Text('没有选中的目标'));
+    }
+
+    // 简化实现：复用现有的全屏视图构建逻辑
+    return _buildFullScreenView();
+  }
+
+  /// 为BlocBuilder构建时间轴视图
+  Widget _buildTimelineViewForBlocBuilder(List<Goal> goals, Goal? currentGoal) {
+    // 简化实现：复用现有的时间轴视图构建逻辑
+    return _buildTimelineView();
+  }
+
+  /// 为BlocBuilder构建网格视图
+  Widget _buildGridViewForBlocBuilder(List<Goal> goals) {
+    // 简化实现：复用现有的网格视图构建逻辑
+    return _buildGridView();
+  }
+
+  /// 为BlocBuilder构建浮动按钮
+  Widget _buildFloatingActionButtonForBlocBuilder(Goal currentGoal) {
+    // 简化实现：复用现有的浮动按钮构建逻辑
+    return _buildFloatingActionButton();
+  }
 
   /// 构建加载视图
   Widget _buildLoadingView() {
@@ -4422,51 +4740,65 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
         await completer.future;
         print('【GoalPage】BLoC操作已完成');
       } else {
-        // 使用传统方式加载特定目标
-        print('【GoalPage】通过传统方式加载特定目标: $goalId');
-        final goal = await _dbHelper.getGoal(goalId);
-        if (goal != null) {
-          print('【GoalPage】传统方式加载特定目标成功: ID=${goal.id}, 标题=${goal.title}');
+        // 批次3阶段3：数据加载统一通过BLoC
+        if (_featureToggles.dataLoadingViaBloc) {
+          // 新路径：通过BLoC事件加载特定目标
+          print('【GoalPage】使用BLoC方式加载特定目标: $goalId');
+          final completer = Completer<void>();
 
-          // 加载同级目标（如果是子目标，加载其兄弟节点）
-          List<Goal> siblingGoals;
-          if (goal.parentId != null) {
-            siblingGoals = await _dbHelper.getGoals(parentId: goal.parentId);
-            print('【GoalPage】加载同级目标: ${siblingGoals.length}个');
-          } else {
-            siblingGoals = await _dbHelper.getGoals(parentId: null);
-            print('【GoalPage】加载根目标: ${siblingGoals.length}个');
-          }
+          // 监听BLoC状态变化
+          late final StreamSubscription<GoalState> subscription;
+          subscription = context.read<GoalBloc>().stream.listen((state) {
+            if (state is GoalsLoaded && state.currentGoal?.id == goalId) {
+              print('【GoalPage】BLoC方式加载特定目标成功: ID=${state.currentGoal!.id}, 标题=${state.currentGoal!.title}');
+              completer.complete();
+              subscription.cancel();
+            } else if (state is GoalError) {
+              print('【GoalPage】BLoC方式加载特定目标失败: ${state.message}');
+              completer.completeError(state.message);
+              subscription.cancel();
+            }
+          });
 
-          // 第二阶段迁移完成：统一使用BLoC事件加载特定目标
+          // 发送加载特定目标事件
           context.read<GoalBloc>().add(LoadSpecificGoal(goalId));
 
-          // 使用BLoC适配器加载特定目标（影子模式）
-          _blocAdapter?.loadSpecificGoal(
-            goalId: goalId,
-            onSuccess: (blocGoal) {
-              print('【影子模式】加载特定目标成功: ID=${blocGoal.id}, 标题=${blocGoal.title}');
-
-              // 比较数据差异
-              if (blocGoal.id != goal.id) {
-                print('【影子模式】数据差异: 传统ID=${goal.id}, BLoC ID=${blocGoal.id}');
-              }
-              if (blocGoal.title != goal.title) {
-                print(
-                    '【影子模式】数据差异: 传统标题=${goal.title}, BLoC标题=${blocGoal.title}');
-              }
-            },
-            onError: (error) {
-              print('【影子模式】加载特定目标失败: $error');
-            },
-          );
+          // 等待结果
+          await completer.future;
         } else {
-          print('【GoalPage】通过传统方式加载特定目标失败: 未找到目标 $goalId');
-          setState(() {
-            _isLoading = false;
-            _error = '未找到目标: $goalId';
-          });
+          // 传统路径：直接从数据库加载
+          print('【GoalPage】通过传统方式加载特定目标: $goalId');
+          final goal = await _dbHelper.getGoal(goalId);
+          if (goal != null) {
+            print('【GoalPage】传统方式加载特定目标成功: ID=${goal.id}, 标题=${goal.title}');
+
+            // 加载同级目标（如果是子目标，加载其兄弟节点）
+            List<Goal> siblingGoals;
+            if (goal.parentId != null) {
+              siblingGoals = await _dbHelper.getGoals(parentId: goal.parentId);
+              print('【GoalPage】加载同级目标: ${siblingGoals.length}个');
+            } else {
+              siblingGoals = await _dbHelper.getGoals(parentId: null);
+              print('【GoalPage】加载根目标: ${siblingGoals.length}个');
+            }
+          }
         }
+
+        // 第二阶段迁移完成：统一使用BLoC事件加载特定目标
+        if (!_featureToggles.dataLoadingViaBloc) {
+          context.read<GoalBloc>().add(LoadSpecificGoal(goalId));
+        }
+
+        // 使用BLoC适配器加载特定目标（影子模式）
+        _blocAdapter?.loadSpecificGoal(
+          goalId: goalId,
+          onSuccess: (blocGoal) {
+            print('【影子模式】加载特定目标成功: ID=${blocGoal.id}, 标题=${blocGoal.title}');
+          },
+          onError: (error) {
+            print('【影子模式】加载特定目标失败: $error');
+          },
+        );
       }
     } catch (e) {
       print('【GoalPage】加载特定目标出错: $e');
@@ -4705,8 +5037,34 @@ class GoalPageState extends State<GoalPage> implements GoalPageStateInterface {
         print(
             '【GoalPage】刷新前的目标树: ${oldGoalsCount}个目标, ${oldParentChildMap[null]?.length ?? 0}个根目标');
 
-        // 获取最新的目标树
-        allGoals = await _dbHelper.getGoalTree();
+        // 批次3阶段3：数据加载统一通过BLoC
+        if (_featureToggles.dataLoadingViaBloc) {
+          // 新路径：通过BLoC事件获取最新目标树
+          print('【GoalPage】使用BLoC方式获取最新目标树');
+          final completer = Completer<List<Goal>>();
+
+          // 监听BLoC状态变化
+          late final StreamSubscription<GoalState> subscription;
+          subscription = context.read<GoalBloc>().stream.listen((state) {
+            if (state is GoalsLoaded) {
+              completer.complete(state.allGoals);
+              subscription.cancel();
+            } else if (state is GoalError) {
+              completer.completeError(state.message);
+              subscription.cancel();
+            }
+          });
+
+          // 发送刷新事件
+          context.read<GoalBloc>().add(RefreshGoalTree());
+
+          // 等待结果
+          allGoals = await completer.future;
+        } else {
+          // 传统路径：直接从数据库获取最新目标树
+          print('【GoalPage】使用传统方式获取最新目标树');
+          allGoals = await _dbHelper.getGoalTree();
+        }
 
         // 记录刷新后的目标树状态
         final int newGoalsCount = allGoals.length;

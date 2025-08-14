@@ -12,6 +12,24 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
   final GoalRepository repository;
   final bool disableBatching; // 测试/降级用：禁用批处理，直接 emit
 
+  /// 批次3阶段5：GoalBloc emit策略统一说明
+  ///
+  /// 【emit策略分类】：
+  /// 1. 立即emit策略：关键编辑操作（标题/描述/日期/图片）
+  ///    - 使用就地更新（map操作修改列表中的特定目标）
+  ///    - 立即emit确保UI及时反馈，响应时间<=100ms
+  ///    - 适用：SaveTitle、SaveDescription、SaveDate、SaveImage
+  ///
+  /// 2. 就地更新+必要时RefreshGoalTree策略：CRUD操作
+  ///    - 优先使用就地更新避免不必要的数据库查询
+  ///    - 仅在影响父子关系时才RefreshGoalTree
+  ///    - 适用：ToggleGoalStatus、UpdateGoal、DeleteGoal
+  ///
+  /// 3. 完整reload策略：批量操作
+  ///    - 刻意选择reload确保数据一致性
+  ///    - 适用于复杂的批量操作场景
+  ///    - 适用：BatchUpdateGoals（标注保留原因）
+
   // UI批量更新器
   late final IUIBatchUpdater _uiBatchUpdater;
 
@@ -573,17 +591,18 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
     }
   }
 
-  // 切换目标状态
+  /// 批次3阶段5：切换目标状态
+  /// 【emit策略】：就地更新+必要时RefreshGoalTree
+  /// - 优先使用就地更新避免不必要的数据库查询
+  /// - 状态切换通常不影响父子关系，使用就地更新即可
+  /// - 性能目标：<=100ms响应时间
   Future<void> _onToggleGoalStatus(
       ToggleGoalStatus event, Emitter<GoalState> emit) async {
     if (state is GoalsLoaded) {
       final currentState = state as GoalsLoaded;
 
       try {
-        // 保存当前状态，以便稍后恢复当前选中的目标
-        Goal? currentSelectedGoal = currentState.currentGoal;
-
-        // 更新状态
+        // 批次3阶段5：改为就地更新策略，避免不必要的数据库查询
         final updatedGoal = event.goal.copyWith(
           status: event.completed ? GoalStatus.completed : GoalStatus.pending,
         );
@@ -591,35 +610,25 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
         // 保存到数据库
         await repository.updateGoal(updatedGoal);
 
-        // 重新加载目标列表，但保留当前选中的目标
-        final goals = await repository.getGoals(parentId: null);
-        final allGoals = await repository.getGoalTree();
+        // 就地更新：使用map操作更新列表中的特定目标
+        final updatedGoals = currentState.goals.map((goal) {
+          return goal.id == updatedGoal.id ? updatedGoal : goal;
+        }).toList();
 
-        // 如果更新的是当前选中的目标，则使用更新后的目标
-        if (currentSelectedGoal != null &&
-            currentSelectedGoal.id == event.goal.id) {
-          currentSelectedGoal = updatedGoal;
-        }
+        final updatedAllGoals = currentState.allGoals.map((goal) {
+          return goal.id == updatedGoal.id ? updatedGoal : goal;
+        }).toList();
 
-        // 确保当前选中的目标仍然存在于加载的目标中
-        bool currentGoalExists =
-            goals.any((g) => g.id == currentSelectedGoal?.id);
+        // 更新当前选中的目标（如果是被更新的目标）
+        final updatedCurrentGoal = currentState.currentGoal?.id == updatedGoal.id
+            ? updatedGoal
+            : currentState.currentGoal;
 
-        // 发出新状态，保留当前选中的目标
-        emit(GoalsLoaded(
-          goals: goals,
-          allGoals: allGoals,
-          currentGoal: currentGoalExists
-              ? currentSelectedGoal
-              : (goals.isNotEmpty ? goals[0] : null),
-          // 保留其他状态
-          viewMode: currentState.viewMode,
-          isEditingTitle: currentState.isEditingTitle,
-          isEditingDescription: currentState.isEditingDescription,
-          showCountdown: currentState.showCountdown,
-          showTime: currentState.showTime,
-          showDescription: currentState.showDescription,
-          showTitle: currentState.showTitle,
+        // 立即emit确保UI及时反馈
+        emit(currentState.copyWith(
+          goals: updatedGoals,
+          allGoals: updatedAllGoals,
+          currentGoal: updatedCurrentGoal,
         ));
       } catch (e) {
         emit(GoalError('切换目标状态失败: $e'));
@@ -775,6 +784,11 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
     }
   }
 
+  /// 批次3阶段5：保存日期
+  /// 【emit策略】：立即emit策略
+  /// - 使用就地更新（map操作修改列表中的特定目标）
+  /// - 立即emit确保UI及时反馈，响应时间<=100ms
+  /// - 日期编辑是关键用户交互，需要即时响应
   Future<void> _onSaveDate(SaveDate event, Emitter<GoalState> emit) async {
     if (state is GoalsLoaded) {
       final currentState = state as GoalsLoaded;
@@ -844,6 +858,11 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
     }
   }
 
+  /// 批次3阶段5：保存图片
+  /// 【emit策略】：立即emit策略
+  /// - 使用就地更新（map操作修改列表中的特定目标）
+  /// - 立即emit确保UI及时反馈，响应时间<=100ms
+  /// - 图片更新是关键用户交互，需要即时响应
   Future<void> _onSaveImage(SaveImage event, Emitter<GoalState> emit) async {
     if (state is GoalsLoaded) {
       final currentState = state as GoalsLoaded;
@@ -1021,6 +1040,13 @@ class GoalBloc extends Bloc<GoalEvent, GoalState> {
     }
   }
 
+  /// 批次3阶段5：批量更新目标
+  /// 【emit策略】：完整reload策略（刻意保留）
+  /// 【保留reload的原因】：
+  /// 1. 批量操作复杂性：可能涉及多个目标的复杂关系变更
+  /// 2. 数据一致性保障：reload确保所有相关数据都是最新状态
+  /// 3. 简化错误处理：避免部分成功/部分失败的复杂状态管理
+  /// 4. 性能权衡：批量操作频率低，一致性比性能更重要
   Future<void> _onBatchUpdateGoals(
       BatchUpdateGoals event, Emitter<GoalState> emit) async {
     if (state is GoalsLoaded) {

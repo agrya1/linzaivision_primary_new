@@ -8,7 +8,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'component_communication_events.dart';
 import '../../models/goal.dart';
-import '../../database/database_helper.dart';
+
 import '../goal/goal_bloc.dart';
 import '../goal/goal_event.dart' as goal_events;
 
@@ -97,11 +97,9 @@ class OperationCompleted extends ComponentCommunicationState {
 /// 组件通信BLoC
 class ComponentCommunicationBloc
     extends Bloc<ComponentCommunicationEvent, ComponentCommunicationState> {
-  final DatabaseHelper databaseHelper;
   final GoalBloc goalBloc;
 
   ComponentCommunicationBloc({
-    required this.databaseHelper,
     required this.goalBloc,
   }) : super(const ComponentCommunicationInitial()) {
     // ========== FullScreenView 事件处理 ==========
@@ -166,12 +164,11 @@ class ComponentCommunicationBloc
     emit(ComponentCommunicationProcessing(event));
 
     try {
-      // 更新目标的图片路径
+      // 更新目标的图片路径 - 通过GoalBloc统一处理
       final updatedGoal = event.goal.copyWith(imagePath: event.imagePath);
-      await databaseHelper.updateGoal(updatedGoal);
 
-      // 通知GoalBloc更新
-      goalBloc.add(goal_events.UpdateGoal(updatedGoal));
+      // 使用UpdateGoalWithValidation事件统一处理数据库更新
+      goalBloc.add(goal_events.UpdateGoalWithValidation(updatedGoal, validateData: false));
 
       emit(OperationCompleted(event, true, message: '图片更新成功'));
     } catch (e) {
@@ -195,12 +192,11 @@ class ComponentCommunicationBloc
     emit(ComponentCommunicationProcessing(event));
 
     try {
-      // 更新目标的视频路径
+      // 更新目标的视频路径 - 通过GoalBloc统一处理
       final updatedGoal = event.goal.copyWith(videoPath: event.videoPath);
-      await databaseHelper.updateGoal(updatedGoal);
 
-      // 通知GoalBloc更新
-      goalBloc.add(goal_events.UpdateGoal(updatedGoal));
+      // 使用UpdateGoalWithValidation事件统一处理数据库更新
+      goalBloc.add(goal_events.UpdateGoalWithValidation(updatedGoal, validateData: false));
 
       emit(OperationCompleted(event, true, message: '视频更新成功'));
     } catch (e) {
@@ -240,12 +236,11 @@ class ComponentCommunicationBloc
     emit(ComponentCommunicationProcessing(event));
 
     try {
-      // 更新目标日期
+      // 更新目标日期 - 通过GoalBloc统一处理
       final updatedGoal = event.goal.copyWith(targetDate: event.newDate);
-      await databaseHelper.updateGoal(updatedGoal);
 
-      // 通知GoalBloc更新
-      goalBloc.add(goal_events.UpdateGoal(updatedGoal));
+      // 使用UpdateGoalWithValidation事件统一处理数据库更新
+      goalBloc.add(goal_events.UpdateGoalWithValidation(updatedGoal, validateData: false));
 
       emit(OperationCompleted(event, true, message: '目标日期更新成功'));
     } catch (e) {
@@ -260,7 +255,8 @@ class ComponentCommunicationBloc
     try {
       // 更新自定义倒计时 - 注意：Goal模型可能没有这个字段，这里先注释掉
       // final updatedGoal = event.goal.copyWith(customCountdownMinutes: event.countdownMinutes);
-      // await databaseHelper.updateGoal(updatedGoal);
+      // 通过GoalBloc统一处理数据库更新
+      // goalBloc.add(goal_events.UpdateGoalWithValidation(updatedGoal, validateData: false));
 
       // 通知GoalBloc更新
       // goalBloc.add(goal_events.UpdateGoal(updatedGoal));

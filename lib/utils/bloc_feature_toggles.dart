@@ -48,6 +48,16 @@ class BlocFeatureToggles {
   // 描述编辑状态是否通过BLoC写路径（批次2灰度开关，默认关闭）
   bool _descriptionEditingWriteThrough = false;
 
+  // 批次3：写路径统一开关
+  // 组件通信是否通过BLoC写路径（批次3阶段1开关，默认关闭）
+  bool _componentCommWriteThrough = false;
+  // 目标CRUD操作是否通过BLoC写路径（批次3阶段2开关，默认关闭）
+  bool _goalCRUDWriteThrough = false;
+  // 数据加载是否通过BLoC路径（批次3阶段3开关，默认关闭）
+  bool _dataLoadingViaBloc = false;
+  // UI状态管理是否通过BLoC路径（批次3阶段4开关，默认关闭）
+  bool _uiStateWriteThrough = false;
+
   // Getters
   bool get titleEditing => _titleEditing;
   bool get descriptionEditing => _descriptionEditing;
@@ -71,6 +81,12 @@ class BlocFeatureToggles {
   bool get currentGoalSelectionWriteThrough => _currentGoalSelectionWriteThrough;
   bool get titleEditingWriteThrough => _titleEditingWriteThrough;
   bool get descriptionEditingWriteThrough => _descriptionEditingWriteThrough;
+
+  // 批次3：写路径统一 getters
+  bool get componentCommWriteThrough => _componentCommWriteThrough;
+  bool get goalCRUDWriteThrough => _goalCRUDWriteThrough;
+  bool get dataLoadingViaBloc => _dataLoadingViaBloc;
+  bool get uiStateWriteThrough => _uiStateWriteThrough;
 
   // 检查特定功能是否启用BLoC模式
   bool isFeatureEnabled(String featureName) {
@@ -96,6 +112,11 @@ class BlocFeatureToggles {
       case 'currentGoalSelectionWriteThrough': return _currentGoalSelectionWriteThrough;
       case 'titleEditingWriteThrough': return _titleEditingWriteThrough;
       case 'descriptionEditingWriteThrough': return _descriptionEditingWriteThrough;
+      // 批次3：写路径统一
+      case 'componentCommWriteThrough': return _componentCommWriteThrough;
+      case 'goalCRUDWriteThrough': return _goalCRUDWriteThrough;
+      case 'dataLoadingViaBloc': return _dataLoadingViaBloc;
+      case 'uiStateWriteThrough': return _uiStateWriteThrough;
       default: return false;
     }
   }
@@ -186,6 +207,23 @@ class BlocFeatureToggles {
         _descriptionEditingWriteThrough = enabled;
         await prefs.setBool('bloc_feature_descriptionEditingWriteThrough', enabled);
         break;
+      // 批次3：写路径统一
+      case 'componentCommWriteThrough':
+        _componentCommWriteThrough = enabled;
+        await prefs.setBool('bloc_feature_componentCommWriteThrough', enabled);
+        break;
+      case 'goalCRUDWriteThrough':
+        _goalCRUDWriteThrough = enabled;
+        await prefs.setBool('bloc_feature_goalCRUDWriteThrough', enabled);
+        break;
+      case 'dataLoadingViaBloc':
+        _dataLoadingViaBloc = enabled;
+        await prefs.setBool('bloc_feature_dataLoadingViaBloc', enabled);
+        break;
+      case 'uiStateWriteThrough':
+        _uiStateWriteThrough = enabled;
+        await prefs.setBool('bloc_feature_uiStateWriteThrough', enabled);
+        break;
     }
   }
   
@@ -241,5 +279,11 @@ class BlocFeatureToggles {
     _currentGoalSelectionWriteThrough = prefs.getBool('bloc_feature_currentGoalSelectionWriteThrough') ?? false;
     _titleEditingWriteThrough = prefs.getBool('bloc_feature_titleEditingWriteThrough') ?? false;
     _descriptionEditingWriteThrough = prefs.getBool('bloc_feature_descriptionEditingWriteThrough') ?? false;
+
+    // 批次3：写路径统一
+    _componentCommWriteThrough = prefs.getBool('bloc_feature_componentCommWriteThrough') ?? false;
+    _goalCRUDWriteThrough = prefs.getBool('bloc_feature_goalCRUDWriteThrough') ?? false;
+    _dataLoadingViaBloc = prefs.getBool('bloc_feature_dataLoadingViaBloc') ?? false;
+    _uiStateWriteThrough = prefs.getBool('bloc_feature_uiStateWriteThrough') ?? false;
   }
 }
